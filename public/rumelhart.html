@@ -1,0 +1,1912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rumelhart Network Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #0a0f1a;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 336px;
+            background: #111827;
+            padding: 24px;
+            border-right: 1px solid #1f2937;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        #sidebar::-webkit-scrollbar {
+            display: none;
+        }
+
+        #sidebar h2 {
+            margin: 0 0 8px 0;
+            font-size: 1.4rem;
+            color: #f8fafc;
+            border-bottom: 2px solid #8b5cf6;
+            padding-bottom: 12px;
+        }
+
+        .nav-link {
+            display: inline-block;
+            color: #94a3b8;
+            font-size: 0.8rem;
+            margin-bottom: 12px;
+            text-decoration: none;
+        }
+
+        .nav-link:hover {
+            color: #e2e8f0;
+        }
+
+        .param-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .param-group label {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        .param-group input[type="number"] {
+            width: 100%;
+            padding: 10px 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #f1f5f9;
+            font-size: 0.95rem;
+        }
+
+        .param-group input[type="number"]:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+        }
+
+        #trainBtn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #trainBtn:hover {
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+            transform: translateY(-1px);
+        }
+
+        #trainBtn:disabled {
+            background: #374151;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .scrubber-section {
+            background: #1e293b;
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .scrubber-section label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .scrubber-section #stepLabel {
+            color: #8b5cf6;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #334155;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #8b5cf6;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .playback-controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .playback-controls button {
+            flex: 1;
+            padding: 8px;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #e2e8f0;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .playback-controls button:hover {
+            background: #475569;
+        }
+
+        #main-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #viz-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .loss-chart-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 200px;
+            background: #111827;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            z-index: 100;
+        }
+
+        .loss-chart-container h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        #loss-chart {
+            width: 100%;
+            height: 80px;
+        }
+
+        .lesion-card {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 280px;
+            max-height: 400px;
+            background: #111827;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            z-index: 100;
+            overflow-y: auto;
+        }
+
+        .lesion-card h4 {
+            margin: 0 0 12px 0;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .lesion-card input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            color: #f1f5f9;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+        }
+
+        .lesion-card input[type="text"]:focus {
+            outline: none;
+            border-color: #8b5cf6;
+        }
+
+        .lesion-props {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .lesion-prop-btn {
+            padding: 4px 8px;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #94a3b8;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .lesion-prop-btn:hover {
+            background: #475569;
+        }
+
+        .lesion-prop-btn.active {
+            background: #22c55e;
+            color: white;
+        }
+
+        .lesion-run-btn {
+            width: 100%;
+            padding: 8px;
+            background: #8b5cf6;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .lesion-run-btn:hover {
+            background: #7c3aed;
+        }
+
+        .lesion-run-btn:disabled {
+            background: #374151;
+            cursor: not-allowed;
+        }
+
+        .lesion-props-label {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            margin-bottom: 6px;
+        }
+
+        .lesion-scrubber {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #334155;
+        }
+
+        .lesion-scrubber label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            margin-bottom: 6px;
+        }
+
+        .lesion-scrubber input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #334155;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .lesion-scrubber input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #059669;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .node {
+            cursor: pointer;
+            stroke: #1e293b;
+            stroke-width: 2px;
+            transition: stroke 0.15s, stroke-width 0.15s;
+        }
+
+        .node:hover {
+            stroke: #a78bfa;
+            stroke-width: 3px;
+        }
+
+        .node.selected {
+            stroke: #fbbf24;
+            stroke-width: 4px;
+        }
+
+        .node-label {
+            fill: #cbd5e1;
+            font-size: 10px;
+            pointer-events: none;
+            font-weight: 500;
+        }
+
+        .layer-label {
+            fill: #64748b;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .layer-bg {
+            fill: #111827;
+            stroke: #1f2937;
+            stroke-width: 1px;
+            rx: 12;
+        }
+
+        .connection {
+            fill: none;
+            stroke-opacity: 0.3;
+            pointer-events: none;
+        }
+
+        .connection.positive {
+            stroke: #22c55e;
+        }
+
+        .connection.negative {
+            stroke: #ef4444;
+        }
+
+        .connection.highlighted {
+            stroke-opacity: 1;
+            stroke-width: 3;
+        }
+
+        .connection.dimmed {
+            stroke-opacity: 0.03 !important;
+            stroke: #1e293b !important;
+            stroke-width: 0.5 !important;
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #111827;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+        }
+
+        .legend h4 {
+            margin: 0 0 12px 0;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .legend-gradient {
+            width: 150px;
+            height: 16px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        .concept-select {
+            background: #1e293b;
+            padding: 12px;
+            border-radius: 6px;
+        }
+
+        .concept-select h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .concept-btn {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #e2e8f0;
+            font-size: 0.8rem;
+            cursor: pointer;
+            margin: 2px;
+            transition: all 0.15s;
+        }
+
+        .concept-btn:hover {
+            background: #475569;
+        }
+
+        .concept-btn.active {
+            background: #8b5cf6;
+            color: white;
+        }
+
+        .concept-btn.lesion {
+            background: #065f46;
+            border: 1px solid #059669;
+        }
+
+        .concept-btn.lesion:hover {
+            background: #047857;
+        }
+
+        .concept-btn.lesion.active {
+            background: #059669;
+            color: white;
+        }
+
+        .predictions-panel {
+            background: #1e293b;
+            padding: 12px;
+            border-radius: 6px;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .predictions-panel h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .prediction-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            font-size: 0.75rem;
+        }
+
+        .prediction-row .prop-name {
+            color: #cbd5e1;
+        }
+
+        .prediction-row .prop-bar {
+            flex: 1;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            margin: 0 8px;
+            overflow: hidden;
+        }
+
+        .prediction-row .prop-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        .prediction-row .prop-value {
+            color: #94a3b8;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        .status {
+            font-size: 0.8rem;
+            color: #64748b;
+            text-align: center;
+            padding: 8px;
+        }
+
+        .status.running {
+            color: #fbbf24;
+        }
+
+        .status.ready {
+            color: #22c55e;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 1000;
+            min-width: 180px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+        }
+
+        .tooltip-header {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #f1f5f9;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .tooltip-content {
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .reset-view-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.2s;
+        }
+
+        .reset-view-btn:hover {
+            background: #475569;
+            border-color: #8b5cf6;
+        }
+
+        .data-section {
+            background: #1e293b;
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .data-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .data-section h4 button {
+            padding: 4px 8px;
+            font-size: 0.7rem;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #e2e8f0;
+            cursor: pointer;
+        }
+
+        .data-section h4 button:hover {
+            background: #475569;
+        }
+
+        .csv-input {
+            width: 100%;
+            height: 80px;
+            padding: 8px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-family: monospace;
+            font-size: 0.7rem;
+            resize: vertical;
+            margin-bottom: 8px;
+        }
+
+        .csv-input:focus {
+            outline: none;
+            border-color: #8b5cf6;
+        }
+
+        .load-csv-btn {
+            width: 100%;
+            padding: 8px;
+            background: #8b5cf6;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: 500;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .load-csv-btn:hover {
+            background: #7c3aed;
+        }
+
+        .info-text {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+
+        .section-header {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #8b5cf6;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 16px 0 8px 0;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .lesion-concepts-list {
+            margin-top: 8px;
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .lesion-concept-tag {
+            display: inline-block;
+            padding: 2px 6px;
+            background: #059669;
+            color: white;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            margin: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <a href="/" class="nav-link">&larr; Back to IAC Visualizer</a>
+    <h2>Rumelhart Network</h2>
+
+    <div class="data-section">
+        <h4>
+            <span>Concept Data</span>
+            <button onclick="loadDefaultData()">Load Example</button>
+        </h4>
+        <textarea id="csvInput" class="csv-input" placeholder="Paste CSV data...
+concept,property1,property2,...
+item1,1,0,..."></textarea>
+        <button class="load-csv-btn" onclick="loadCSVData()">Load Data</button>
+    </div>
+
+    <div class="section-header">Hyperparameters</div>
+
+    <div class="param-group">
+        <label>Hidden Layer Size</label>
+        <input type="number" id="hiddenDim" value="8" min="2" max="32">
+    </div>
+
+    <div class="param-group">
+        <label>Learning Rate (eta)</label>
+        <input type="number" id="eta" value="0.01" step="0.001" min="0.001" max="0.5">
+    </div>
+
+    <div class="param-group">
+        <label>Training Epochs</label>
+        <input type="number" id="epochs" value="20000" min="100" max="10000" step="100">
+    </div>
+
+    <div class="section-header">Training</div>
+
+    <button id="trainBtn" onclick="trainModel()">TRAIN NETWORK</button>
+
+    <div class="scrubber-section" id="trainingScrubberSection" style="display: none;">
+        <label>
+            <span>Training Progress</span>
+            <span id="stepLabel">0 / 0</span>
+        </label>
+        <input type="range" id="scrubber" min="0" max="0" value="0" oninput="updateStep(parseInt(this.value))">
+        <div class="playback-controls">
+            <button onclick="playbackStep(-10)">-10</button>
+            <button onclick="playbackStep(-1)">-1</button>
+            <button onclick="togglePlay()" id="playBtn">Play</button>
+            <button onclick="playbackStep(1)">+1</button>
+            <button onclick="playbackStep(10)">+10</button>
+        </div>
+    </div>
+
+    <div class="section-header">View</div>
+
+    <div class="concept-select">
+        <h4>Select Concept</h4>
+        <div id="conceptButtons"></div>
+    </div>
+
+    <div class="predictions-panel">
+        <h4>Property Predictions</h4>
+        <div id="predictionsList">Train the network first</div>
+    </div>
+
+    <div id="status" class="status">Load data to begin</div>
+</div>
+
+<div id="main-container">
+    <div id="viz-container">
+        <svg id="canvas"></svg>
+        <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+        <div id="tooltip" class="tooltip">
+            <div class="tooltip-header" id="tooltip-name"></div>
+            <div class="tooltip-content" id="tooltip-content"></div>
+        </div>
+        <div class="legend">
+            <h4>Activation Level</h4>
+            <div class="legend-gradient" id="legendGradient"></div>
+            <div class="legend-labels">
+                <span>0.0</span>
+                <span>0.5</span>
+                <span>1.0</span>
+            </div>
+        </div>
+        <div class="loss-chart-container">
+            <h4>Training Loss</h4>
+            <svg id="loss-chart"></svg>
+        </div>
+        <div class="lesion-card" id="lesionCard">
+            <h4>Lesion Test</h4>
+            <input type="text" id="lesionName" placeholder="New concept name...">
+            <div class="lesion-props-label">Known Properties:</div>
+            <div class="lesion-props" id="lesionProps"></div>
+            <button class="lesion-run-btn" id="lesionRunBtn" onclick="runLesionTest()" disabled>Add & Train Concept</button>
+            <div class="lesion-concepts-list" id="lesionConceptsList"></div>
+            <div class="lesion-scrubber" id="lesionScrubberSection" style="display: none;">
+                <label>
+                    <span>Lesion Progress</span>
+                    <span id="lesionStepLabel">0 / 0</span>
+                </label>
+                <input type="range" id="lesionScrubber" min="0" max="0" value="0" oninput="updateLesionStep(parseInt(this.value))">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Default concept-property data (Rumelhart's semantic memory)
+    const DEFAULT_CSV = `concept,is_living,is_plant,is_animal,is_tree,is_flower,is_bird,is_fish,is_pretty,is_big,is_green,is_red,is_yellow,can_grow,can_move,can_swim,can_fly,can_sing,has_skin,has_roots,has_leaves,has_bark,has_branches,has_petals,has_wings,has_feathers,has_gills,has_scales
+pine,1,1,0,1,0,0,0,0,1,1,0,0,1,0,0,0,0,0,1,1,1,1,0,0,0,0,0
+oak,1,1,0,1,0,0,0,0,1,1,0,0,1,0,0,0,0,0,1,1,1,1,0,0,0,0,0
+rose,1,1,0,0,1,0,0,1,0,1,1,0,1,0,0,0,0,0,1,1,0,0,1,0,0,0,0
+daisy,1,1,0,0,1,0,0,1,0,1,0,1,1,0,0,0,0,0,1,1,0,0,1,0,0,0,0
+robin,1,0,1,0,0,1,0,1,0,0,1,0,1,1,0,1,1,1,0,0,0,0,0,1,1,0,0
+canary,1,0,1,0,0,1,0,1,0,0,0,1,1,1,0,1,1,1,0,0,0,0,0,1,1,0,0
+sunfish,1,0,1,0,0,0,1,1,0,0,0,1,1,1,1,0,0,1,0,0,0,0,0,0,0,1,1
+salmon,1,0,1,0,0,0,1,0,1,0,1,0,1,1,1,0,0,1,0,0,0,0,0,0,0,1,1`;
+
+    // State
+    let networkData = null;
+    let trainData = null;
+    let selectedConcept = null;
+    let currentStep = 0;
+    let isPlaying = false;
+    let playInterval = null;
+    let lesionProps = new Set(); // Properties selected for lesion test
+    let lesionConcepts = []; // List of lesioned concept names
+    let lesionData = null; // Training history for lesion concepts
+    let currentLesionStep = 0; // Separate step for lesion scrubber
+
+    // D3 elements
+    const svg = d3.select("#canvas");
+    let g;
+    let zoomBehavior;
+
+    // Color scale for activations (0 to 1)
+    const activationColor = d3.scaleSequential()
+        .domain([0, 1])
+        .interpolator(d3.interpolateViridis);
+
+    // Weight color scale
+    const weightColor = d3.scaleSequential()
+        .domain([-1, 1])
+        .interpolator(t => d3.interpolateRdYlGn(t));
+
+    function init() {
+        setupZoom();
+        setupLegendGradient();
+        loadDefaultData();
+    }
+
+    function setupZoom() {
+        zoomBehavior = d3.zoom()
+            .scaleExtent([0.3, 3])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+
+        svg.call(zoomBehavior);
+        g = svg.append("g");
+    }
+
+    function resetView() {
+        svg.transition()
+            .duration(300)
+            .call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    function setupLegendGradient() {
+        const gradient = document.getElementById('legendGradient');
+        gradient.style.background = `linear-gradient(to right, ${activationColor(0)}, ${activationColor(0.5)}, ${activationColor(1)})`;
+    }
+
+    function loadDefaultData() {
+        document.getElementById('csvInput').value = DEFAULT_CSV;
+        loadCSVData();
+    }
+
+    function parseCSV(csvText) {
+        const lines = csvText.trim().split('\n');
+        if (lines.length < 2) return null;
+
+        const headers = lines[0].split(',').map(h => h.trim());
+        const rows = lines.slice(1).map(line => {
+            const values = line.split(',').map(v => v.trim());
+            const row = {};
+            headers.forEach((h, i) => row[h] = values[i] || '');
+            return row;
+        });
+
+        return { headers, rows };
+    }
+
+    function loadCSVData() {
+        const csvText = document.getElementById('csvInput').value.trim();
+        if (!csvText) {
+            updateStatus('error', 'Please paste CSV data');
+            return;
+        }
+
+        const csvData = parseCSV(csvText);
+        if (!csvData || csvData.rows.length === 0) {
+            updateStatus('error', 'Invalid CSV format');
+            return;
+        }
+
+        const conceptCol = csvData.headers[0];
+        const propertyHeaders = csvData.headers.slice(1);
+
+        networkData = {
+            concepts: csvData.rows.map(r => r[conceptCol]),
+            properties: propertyHeaders,
+            targets: csvData.rows.map(row =>
+                propertyHeaders.map(p => parseInt(row[p]) || 0)
+            ),
+            hidden_dim: parseInt(document.getElementById('hiddenDim').value)
+        };
+
+        trainData = null;
+        currentStep = 0;
+        selectedConcept = networkData.concepts[0];
+
+        renderNetwork();
+        updateConceptButtons();
+        highlightSelectedConcept();
+        updateLesionProps();
+        updateStatus('ready', `Loaded ${networkData.concepts.length} concepts, ${networkData.properties.length} properties`);
+    }
+
+    function updateLesionProps() {
+        const container = document.getElementById('lesionProps');
+        if (!networkData) {
+            container.innerHTML = '';
+            return;
+        }
+
+        lesionProps.clear();
+        container.innerHTML = networkData.properties.map(p =>
+            `<button class="lesion-prop-btn" data-prop="${p}" onclick="toggleLesionProp('${p}')">${p.replace(/_/g, ' ')}</button>`
+        ).join('');
+
+        document.getElementById('lesionRunBtn').disabled = !trainData;
+        updateLesionConceptsList();
+    }
+
+    function updateLesionConceptsList() {
+        const container = document.getElementById('lesionConceptsList');
+        if (lesionConcepts.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = 'Lesioned: ' + lesionConcepts.map(c =>
+            `<span class="lesion-concept-tag">${c}</span>`
+        ).join('');
+    }
+
+    function toggleLesionProp(prop) {
+        if (lesionProps.has(prop)) {
+            lesionProps.delete(prop);
+        } else {
+            lesionProps.add(prop);
+        }
+
+        // Update button styles
+        document.querySelectorAll('.lesion-prop-btn').forEach(btn => {
+            const btnProp = btn.getAttribute('data-prop');
+            btn.classList.toggle('active', lesionProps.has(btnProp));
+        });
+    }
+
+    function runLesionTest() {
+        if (!trainData || lesionProps.size === 0) {
+            updateStatus('error', 'Train the network first and select at least one property');
+            return;
+        }
+
+        const newName = document.getElementById('lesionName').value.trim() || `lesion_${lesionConcepts.length + 1}`;
+
+        // Check if concept already exists
+        if (lesionConcepts.includes(newName)) {
+            updateStatus('error', 'Lesion concept already exists');
+            return;
+        }
+
+        updateStatus('running', `Training lesion concept "${newName}"...`);
+
+        // Get the final trained weights (frozen W_out)
+        const baseWeights = trainData.weight_history[trainData.weight_history.length - 1];
+        const W_out = baseWeights.W_out.map(row => [...row]);
+        const b_out = [...baseWeights.b_out];
+
+        // Create target vector for new concept
+        const newTargets = networkData.properties.map(p => lesionProps.has(p) ? 1 : 0);
+
+        // Initialize new input weights (small random)
+        let W_in_new = Array(networkData.hidden_dim).fill(0).map(() => (Math.random() - 0.5) * 0.02);
+        let b_h = [...baseWeights.b_h];
+
+        const eta = parseFloat(document.getElementById('eta').value);
+        const epochs = parseInt(document.getElementById('epochs').value);
+        const sigmoid = x => 1.0 / (1.0 + Math.exp(-x));
+
+        // Initialize lesion data structure if needed
+        if (!lesionData) {
+            lesionData = {
+                concepts: [],
+                weight_history: [], // Per concept: array of W_in rows over time
+                hidden_history: [], // Per concept: array of hidden activations over time
+                prediction_history: [], // Per concept: array of predictions over time
+                targets: []
+            };
+        }
+
+        // Training history for this concept
+        const conceptWeightHistory = [];
+        const conceptHiddenHistory = [];
+        const conceptPredHistory = [];
+
+        // Record at same intervals as main training
+        const recordInterval = Math.max(1, Math.floor(epochs / 100));
+
+        // Record initial state
+        const recordState = () => {
+            const h_net = W_in_new.map((w, j) => w + b_h[j]);
+            const h = h_net.map(sigmoid);
+            const y_net = Array(networkData.properties.length).fill(0);
+            for (let k = 0; k < networkData.properties.length; k++) {
+                for (let j = 0; j < networkData.hidden_dim; j++) {
+                    y_net[k] += h[j] * W_out[j][k];
+                }
+                y_net[k] += b_out[k];
+            }
+            const y = y_net.map(sigmoid);
+
+            conceptWeightHistory.push([...W_in_new]);
+            conceptHiddenHistory.push([...h]);
+            conceptPredHistory.push([...y]);
+        };
+
+        recordState();
+
+        // Train for the new concept only (freeze W_out)
+        for (let epoch = 1; epoch <= epochs; epoch++) {
+            // Forward pass
+            const h_net = W_in_new.map((w, j) => w + b_h[j]);
+            const h = h_net.map(sigmoid);
+
+            const y_net = Array(networkData.properties.length).fill(0);
+            for (let k = 0; k < networkData.properties.length; k++) {
+                for (let j = 0; j < networkData.hidden_dim; j++) {
+                    y_net[k] += h[j] * W_out[j][k];
+                }
+                y_net[k] += b_out[k];
+            }
+            const y = y_net.map(sigmoid);
+
+            // Compute error only for known properties
+            const delta_out = [];
+            for (let k = 0; k < networkData.properties.length; k++) {
+                if (lesionProps.has(networkData.properties[k])) {
+                    delta_out[k] = (newTargets[k] - y[k]) * y[k] * (1 - y[k]);
+                } else {
+                    delta_out[k] = 0;
+                }
+            }
+
+            // Hidden delta
+            const delta_h = [];
+            for (let j = 0; j < networkData.hidden_dim; j++) {
+                let sum = 0;
+                for (let k = 0; k < networkData.properties.length; k++) {
+                    sum += W_out[j][k] * delta_out[k];
+                }
+                delta_h[j] = sum * h[j] * (1 - h[j]);
+            }
+
+            // Update input weights and hidden bias
+            for (let j = 0; j < networkData.hidden_dim; j++) {
+                W_in_new[j] += eta * delta_h[j];
+                b_h[j] += eta * delta_h[j];
+            }
+
+            // Record at intervals
+            if (epoch % recordInterval === 0 || epoch === epochs) {
+                recordState();
+            }
+        }
+
+        // Add to lesion data
+        lesionData.concepts.push(newName);
+        lesionData.weight_history.push(conceptWeightHistory);
+        lesionData.hidden_history.push(conceptHiddenHistory);
+        lesionData.prediction_history.push(conceptPredHistory);
+        lesionData.targets.push(newTargets);
+
+        // Add to lesion concepts list
+        lesionConcepts.push(newName);
+
+        // Re-render network with new lesion layer
+        renderNetwork();
+
+        // Show and setup lesion scrubber
+        const lesionScrubberSection = document.getElementById('lesionScrubberSection');
+        const lesionScrubber = document.getElementById('lesionScrubber');
+        lesionScrubberSection.style.display = 'block';
+        lesionScrubber.max = conceptPredHistory.length - 1;
+        lesionScrubber.value = conceptPredHistory.length - 1;
+        currentLesionStep = conceptPredHistory.length - 1;
+        document.getElementById('lesionStepLabel').textContent = `${currentLesionStep} / ${conceptPredHistory.length - 1}`;
+
+        // Update UI
+        updateConceptButtons();
+        updateLesionConceptsList();
+        selectedConcept = newName;
+        highlightSelectedConcept();
+        updateVisualization();
+        updatePredictions();
+
+        updateStatus('ready', `Added "${newName}" - taught ${lesionProps.size} properties, see what it generalized!`);
+
+        // Clear lesion inputs
+        document.getElementById('lesionName').value = '';
+        lesionProps.clear();
+        document.querySelectorAll('.lesion-prop-btn').forEach(btn => btn.classList.remove('active'));
+    }
+
+    function updateConceptButtons() {
+        const container = document.getElementById('conceptButtons');
+        if (!networkData) {
+            container.innerHTML = 'Load data first';
+            return;
+        }
+
+        let html = networkData.concepts.map(c =>
+            `<button class="concept-btn ${c === selectedConcept ? 'active' : ''}" onclick="selectConcept('${c}')">${c}</button>`
+        ).join('');
+
+        // Add lesion concepts with different style
+        if (lesionConcepts.length > 0) {
+            html += lesionConcepts.map(c =>
+                `<button class="concept-btn lesion ${c === selectedConcept ? 'active' : ''}" onclick="selectConcept('${c}')">${c}</button>`
+            ).join('');
+        }
+
+        container.innerHTML = html;
+    }
+
+    function selectConcept(concept) {
+        selectedConcept = concept;
+        updateConceptButtons();
+        highlightSelectedConcept();
+        updateVisualization();
+        updatePredictions();
+    }
+
+    function highlightSelectedConcept() {
+        if (!networkData || !window.nodePositions) return;
+
+        const isLesionConcept = lesionConcepts.includes(selectedConcept);
+        const conceptIdx = networkData.concepts.indexOf(selectedConcept);
+        const lesionIdx = lesionConcepts.indexOf(selectedConcept);
+
+        // Highlight selected concept node (regular concepts)
+        networkData.concepts.forEach(c => {
+            d3.select(`#node-Concepts-${c}`)
+                .classed('selected', c === selectedConcept);
+        });
+
+        // Highlight selected lesion concept node
+        lesionConcepts.forEach(c => {
+            d3.select(`#node-Lesion-${c}`)
+                .classed('selected', c === selectedConcept);
+        });
+
+        // If no training data, just dim all non-selected concept connections
+        if (!trainData) {
+            // Dim regular concept connections
+            for (let ci = 0; ci < networkData.concepts.length; ci++) {
+                for (let j = 0; j < networkData.hidden_dim; j++) {
+                    const isSelected = !isLesionConcept && ci === conceptIdx;
+                    d3.select(`#conn-in-${ci}-${j}`)
+                        .classed('highlighted', isSelected)
+                        .classed('dimmed', !isSelected);
+                }
+            }
+
+            // Dim lesion concept connections
+            for (let li = 0; li < lesionConcepts.length; li++) {
+                for (let j = 0; j < networkData.hidden_dim; j++) {
+                    const isSelected = isLesionConcept && li === lesionIdx;
+                    d3.select(`#conn-lesion-${li}-${j}`)
+                        .classed('highlighted', isSelected)
+                        .classed('dimmed', !isSelected);
+                }
+            }
+        }
+    }
+
+    function renderNetwork() {
+        if (!networkData) return;
+
+        const container = document.getElementById('viz-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        svg.attr("width", width).attr("height", height);
+        g.selectAll("*").remove();
+
+        const hiddenDim = networkData.hidden_dim;
+        const concepts = networkData.concepts;
+        const properties = networkData.properties;
+
+        // Layout: 3 columns - concepts/lesion (stacked), hidden, properties
+        const layerWidth = 120;
+        const hasLesion = lesionConcepts.length > 0;
+        const spacing = 150;
+        const totalWidth = 3 * layerWidth + 2 * spacing;
+        const startX = (width - totalWidth) / 2;
+
+        // Build layers array - Concepts and Lesion share the same X position
+        const layers = [
+            { name: 'Concepts', nodes: concepts, x: startX },
+            { name: 'Hidden', nodes: Array(hiddenDim).fill(0).map((_, i) => `h${i}`), x: startX + layerWidth + spacing },
+            { name: 'Properties', nodes: properties, x: startX + 2 * (layerWidth + spacing) }
+        ];
+
+        if (hasLesion) {
+            layers.push({ name: 'Lesion', nodes: lesionConcepts, x: startX });
+        }
+
+        // Calculate node positions
+        const nodePositions = {};
+
+        // Calculate combined height for Concepts + Lesion if lesion exists
+        const conceptCount = concepts.length;
+        const lesionCount = hasLesion ? lesionConcepts.length : 0;
+        const combinedCount = conceptCount + lesionCount;
+        const gapBetweenGroups = hasLesion ? 70 : 0;
+
+        layers.forEach(layer => {
+            const nodeCount = layer.nodes.length;
+            let layerHeight, startY;
+
+            if (layer.name === 'Concepts' && hasLesion) {
+                // Concepts positioned in upper portion
+                const totalInputHeight = combinedCount * 30 + 60 + gapBetweenGroups;
+                startY = (height - totalInputHeight) / 2 + 40;
+                layerHeight = nodeCount * 30 + 30;
+            } else if (layer.name === 'Lesion') {
+                // Lesion positioned below Concepts
+                const totalInputHeight = combinedCount * 30 + 60 + gapBetweenGroups;
+                const conceptsStartY = (height - totalInputHeight) / 2 + 40;
+                startY = conceptsStartY + conceptCount * 30 + gapBetweenGroups;
+                layerHeight = nodeCount * 30 + 30;
+            } else {
+                // Hidden and Properties centered normally
+                layerHeight = nodeCount * 30 + 60;
+                startY = (height - layerHeight) / 2 + 40;
+            }
+
+            layer.nodes.forEach((node, i) => {
+                nodePositions[`${layer.name}-${node}`] = {
+                    x: layer.x + layerWidth / 2,
+                    y: startY + i * 30,
+                    layer: layer.name,
+                    name: node
+                };
+            });
+
+            layer.bounds = {
+                x: layer.x - 10,
+                y: startY - 40,
+                width: layerWidth + 20,
+                height: layerHeight
+            };
+        });
+
+        // Draw layer backgrounds
+        g.selectAll(".layer-bg")
+            .data(layers)
+            .enter()
+            .append("rect")
+            .attr("class", "layer-bg")
+            .attr("x", d => d.bounds.x)
+            .attr("y", d => d.bounds.y)
+            .attr("width", d => d.bounds.width)
+            .attr("height", d => d.bounds.height);
+
+        // Draw layer labels
+        g.selectAll(".layer-label")
+            .data(layers)
+            .enter()
+            .append("text")
+            .attr("class", "layer-label")
+            .attr("x", d => d.bounds.x + d.bounds.width / 2)
+            .attr("y", d => d.bounds.y - 10)
+            .attr("text-anchor", "middle")
+            .text(d => d.name);
+
+        // Draw connections (input -> hidden, lesion -> hidden, hidden -> output)
+        const connectionGroup = g.append("g").attr("class", "connections");
+
+        // Find hidden layer index
+        const hiddenLayerIdx = layers.findIndex(l => l.name === 'Hidden');
+        const hiddenNodes = layers[hiddenLayerIdx].nodes;
+
+        // Concepts -> Hidden connections
+        concepts.forEach((concept, ci) => {
+            hiddenNodes.forEach((hidden, hi) => {
+                const source = nodePositions[`Concepts-${concept}`];
+                const target = nodePositions[`Hidden-${hidden}`];
+                drawConnection(connectionGroup, source, target, 0, `in-${ci}-${hi}`);
+            });
+        });
+
+        // Lesion -> Hidden connections
+        if (hasLesion) {
+            lesionConcepts.forEach((concept, li) => {
+                hiddenNodes.forEach((hidden, hi) => {
+                    const source = nodePositions[`Lesion-${concept}`];
+                    const target = nodePositions[`Hidden-${hidden}`];
+                    drawConnection(connectionGroup, source, target, 0, `lesion-${li}-${hi}`);
+                });
+            });
+        }
+
+        // Hidden -> Output connections
+        hiddenNodes.forEach((hidden, hi) => {
+            properties.forEach((prop, pi) => {
+                const source = nodePositions[`Hidden-${hidden}`];
+                const target = nodePositions[`Properties-${prop}`];
+                drawConnection(connectionGroup, source, target, 0, `out-${hi}-${pi}`);
+            });
+        });
+
+        // Draw nodes
+        const nodeGroup = g.append("g").attr("class", "nodes");
+
+        const allNodes = Object.entries(nodePositions).map(([key, pos]) => ({
+            key,
+            ...pos
+        }));
+
+        nodeGroup.selectAll(".node")
+            .data(allNodes)
+            .enter()
+            .append("circle")
+            .attr("class", d => `node ${d.layer}`)
+            .attr("id", d => `node-${d.key.replace(/\s/g, '-')}`)
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y)
+            .attr("r", 12)
+            .attr("fill", d => {
+                if (d.layer === 'Concepts') return '#8b5cf6';
+                if (d.layer === 'Lesion') return '#059669';
+                if (d.layer === 'Hidden') return '#4b5563';
+                return '#3b82f6';
+            })
+            .on("mouseenter", (event, d) => handleNodeHover(event, d, true))
+            .on("mouseleave", (event, d) => handleNodeHover(event, d, false))
+            .on("click", (event, d) => {
+                if (d.layer === 'Concepts' || d.layer === 'Lesion') {
+                    selectConcept(d.name);
+                }
+            });
+
+        // Draw labels
+        nodeGroup.selectAll(".node-label")
+            .data(allNodes.filter(n => n.layer !== 'Hidden'))
+            .enter()
+            .append("text")
+            .attr("class", "node-label")
+            .attr("x", d => (d.layer === 'Concepts' || d.layer === 'Lesion') ? d.x - 18 : d.x + 18)
+            .attr("y", d => d.y + 4)
+            .attr("text-anchor", d => (d.layer === 'Concepts' || d.layer === 'Lesion') ? 'end' : 'start')
+            .text(d => d.name.length > 15 ? d.name.slice(0, 15) + '...' : d.name);
+
+        // Store for later updates
+        window.nodePositions = nodePositions;
+        window.layers = layers;
+    }
+
+    function drawConnection(group, source, target, weight, id) {
+        const midX = (source.x + target.x) / 2;
+
+        const path = d3.path();
+        path.moveTo(source.x, source.y);
+        path.quadraticCurveTo(midX, (source.y + target.y) / 2, target.x, target.y);
+
+        group.append("path")
+            .attr("class", `connection ${weight >= 0 ? 'positive' : 'negative'}`)
+            .attr("id", `conn-${id}`)
+            .attr("d", path.toString())
+            .attr("stroke-width", Math.max(0.5, Math.abs(weight) * 3))
+            .style("stroke", weightColor((weight + 1) / 2));
+    }
+
+    function handleNodeHover(event, d, isEntering) {
+        const tooltip = document.getElementById('tooltip');
+
+        if (isEntering) {
+            document.getElementById('tooltip-name').textContent = d.name;
+
+            let content = `Layer: ${d.layer}`;
+
+            if (trainData && selectedConcept) {
+                const conceptIdx = networkData.concepts.indexOf(selectedConcept);
+
+                if (d.layer === 'Hidden') {
+                    const hiddenIdx = parseInt(d.name.slice(1));
+                    const hiddenVals = trainData.hidden_history[currentStep][conceptIdx];
+                    content += `<br>Activation: ${hiddenVals[hiddenIdx].toFixed(4)}`;
+                } else if (d.layer === 'Properties') {
+                    const propIdx = networkData.properties.indexOf(d.name);
+                    const predVals = trainData.prediction_history[currentStep][conceptIdx];
+                    const target = networkData.targets[conceptIdx][propIdx];
+                    content += `<br>Prediction: ${predVals[propIdx].toFixed(4)}`;
+                    content += `<br>Target: ${target}`;
+                }
+            }
+
+            document.getElementById('tooltip-content').innerHTML = content;
+
+            const rect = event.target.getBoundingClientRect();
+            const container = document.getElementById('viz-container').getBoundingClientRect();
+            tooltip.style.left = (rect.right - container.left + 10) + 'px';
+            tooltip.style.top = (rect.top - container.top) + 'px';
+            tooltip.classList.add('visible');
+        } else {
+            tooltip.classList.remove('visible');
+        }
+    }
+
+    async function trainModel() {
+        if (!networkData) {
+            updateStatus('error', 'Load data first');
+            return;
+        }
+
+        const btn = document.getElementById('trainBtn');
+        btn.disabled = true;
+        btn.textContent = 'TRAINING...';
+        updateStatus('running', 'Training network...');
+
+        const params = {
+            hidden_dim: parseInt(document.getElementById('hiddenDim').value),
+            eta: parseFloat(document.getElementById('eta').value),
+            epochs: parseInt(document.getElementById('epochs').value)
+        };
+
+        try {
+            // Client-side training
+            trainData = trainNetworkClientSide(networkData, params);
+
+            // Show and setup training scrubber
+            document.getElementById('trainingScrubberSection').style.display = 'block';
+            const scrubber = document.getElementById('scrubber');
+            scrubber.max = trainData.losses.length - 1;
+            scrubber.value = trainData.losses.length - 1;
+
+            currentStep = trainData.losses.length - 1;
+            updateStep(currentStep);
+            renderLossChart();
+            updatePredictions();
+            updateStatus('ready', `Training complete - Final loss: ${trainData.losses[trainData.losses.length - 1].toFixed(6)}`);
+
+            // Enable lesion test
+            document.getElementById('lesionRunBtn').disabled = false;
+
+        } catch (e) {
+            console.error('Training error:', e);
+            updateStatus('error', 'Training failed: ' + e.message);
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'TRAIN NETWORK';
+    }
+
+    // Client-side Rumelhart model
+    function trainNetworkClientSide(data, params) {
+        const { concepts, properties, targets, hidden_dim } = data;
+        const n_concepts = concepts.length;
+        const n_properties = properties.length;
+        const eta = params.eta;
+        const epochs = params.epochs;
+
+        // Initialize weights (small random)
+        let W_in = Array(n_concepts).fill(0).map(() =>
+            Array(hidden_dim).fill(0).map(() => (Math.random() - 0.5) * 0.02)
+        );
+        let b_h = Array(hidden_dim).fill(0);
+        let W_out = Array(hidden_dim).fill(0).map(() =>
+            Array(n_properties).fill(0).map(() => (Math.random() - 0.5) * 0.02)
+        );
+        let b_out = Array(n_properties).fill(0);
+
+        const sigmoid = x => 1.0 / (1.0 + Math.exp(-x));
+
+        const forward = (conceptIdx) => {
+            // Hidden layer
+            const h_net = W_in[conceptIdx].map((w, j) => w + b_h[j]);
+            const h = h_net.map(sigmoid);
+
+            // Output layer
+            const y_net = Array(n_properties).fill(0);
+            for (let k = 0; k < n_properties; k++) {
+                for (let j = 0; j < hidden_dim; j++) {
+                    y_net[k] += h[j] * W_out[j][k];
+                }
+                y_net[k] += b_out[k];
+            }
+            const y = y_net.map(sigmoid);
+
+            return { h, y };
+        };
+
+        const losses = [];
+        const weight_history = [];
+        const hidden_history = [];
+        const prediction_history = [];
+
+        const recordState = (loss) => {
+            losses.push(loss);
+
+            weight_history.push({
+                W_in: W_in.map(row => [...row]),
+                W_out: W_out.map(row => [...row]),
+                b_h: [...b_h],
+                b_out: [...b_out]
+            });
+
+            const hidden_reps = [];
+            const preds = [];
+            for (let i = 0; i < n_concepts; i++) {
+                const { h, y } = forward(i);
+                hidden_reps.push([...h]);
+                preds.push([...y]);
+            }
+            hidden_history.push(hidden_reps);
+            prediction_history.push(preds);
+        };
+
+        // Initial state
+        recordState(0);
+
+        const recordInterval = Math.max(1, Math.floor(epochs / 100));
+
+        for (let epoch = 1; epoch <= epochs; epoch++) {
+            // Shuffle order
+            const order = Array(n_concepts).fill(0).map((_, i) => i);
+            for (let i = order.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [order[i], order[j]] = [order[j], order[i]];
+            }
+
+            let total_loss = 0;
+
+            for (const i of order) {
+                const { h, y } = forward(i);
+                const t = targets[i];
+
+                // Squared error
+                let loss = 0;
+                const e = [];
+                for (let k = 0; k < n_properties; k++) {
+                    e[k] = t[k] - y[k];
+                    loss += 0.5 * e[k] * e[k];
+                }
+                total_loss += loss;
+
+                // Output delta
+                const delta_out = [];
+                for (let k = 0; k < n_properties; k++) {
+                    delta_out[k] = e[k] * y[k] * (1 - y[k]);
+                }
+
+                // Hidden delta
+                const delta_h = [];
+                for (let j = 0; j < hidden_dim; j++) {
+                    let sum = 0;
+                    for (let k = 0; k < n_properties; k++) {
+                        sum += W_out[j][k] * delta_out[k];
+                    }
+                    delta_h[j] = sum * h[j] * (1 - h[j]);
+                }
+
+                // Update weights
+                for (let j = 0; j < hidden_dim; j++) {
+                    for (let k = 0; k < n_properties; k++) {
+                        W_out[j][k] += eta * h[j] * delta_out[k];
+                    }
+                }
+                for (let k = 0; k < n_properties; k++) {
+                    b_out[k] += eta * delta_out[k];
+                }
+                for (let j = 0; j < hidden_dim; j++) {
+                    W_in[i][j] += eta * delta_h[j];
+                    b_h[j] += eta * delta_h[j];
+                }
+            }
+
+            const avg_loss = total_loss / n_concepts;
+
+            if (epoch % recordInterval === 0 || epoch === epochs) {
+                recordState(avg_loss);
+            }
+        }
+
+        return {
+            losses,
+            weight_history,
+            hidden_history,
+            prediction_history,
+            concepts,
+            properties,
+            hidden_dim
+        };
+    }
+
+    function updateStep(step) {
+        if (!trainData) return;
+
+        step = Math.max(0, Math.min(step, trainData.losses.length - 1));
+        currentStep = step;
+
+        document.getElementById('scrubber').value = step;
+        document.getElementById('stepLabel').textContent = `${step} / ${trainData.losses.length - 1}`;
+
+        updateVisualization();
+        updatePredictions();
+        updateLossMarker();
+    }
+
+    function updateLesionStep(step) {
+        if (!lesionData || lesionConcepts.length === 0) return;
+
+        // Use the first lesion concept's history length as reference
+        const maxStep = lesionData.prediction_history[0].length - 1;
+        step = Math.max(0, Math.min(step, maxStep));
+        currentLesionStep = step;
+
+        document.getElementById('lesionScrubber').value = step;
+        document.getElementById('lesionStepLabel').textContent = `${step} / ${maxStep}`;
+
+        // Only update if a lesion concept is selected
+        if (lesionConcepts.includes(selectedConcept)) {
+            updateVisualization();
+            updatePredictions();
+        }
+    }
+
+    function updateVisualization() {
+        if (!trainData || !selectedConcept || !window.nodePositions) return;
+
+        const isLesionConcept = lesionConcepts.includes(selectedConcept);
+        const conceptIdx = networkData.concepts.indexOf(selectedConcept);
+        const lesionIdx = lesionConcepts.indexOf(selectedConcept);
+
+        let hiddenVals, predVals, inputWeights;
+        const weights = trainData.weight_history[currentStep];
+
+        if (isLesionConcept && lesionData) {
+            // Get data from lesion history using lesion-specific scrubber step
+            const lesionStepCount = lesionData.weight_history[lesionIdx].length;
+            const lesionStep = Math.min(currentLesionStep, lesionStepCount - 1);
+            hiddenVals = lesionData.hidden_history[lesionIdx][lesionStep];
+            predVals = lesionData.prediction_history[lesionIdx][lesionStep];
+            inputWeights = lesionData.weight_history[lesionIdx][lesionStep];
+        } else {
+            hiddenVals = trainData.hidden_history[currentStep][conceptIdx];
+            predVals = trainData.prediction_history[currentStep][conceptIdx];
+            inputWeights = weights.W_in[conceptIdx];
+        }
+
+        // Update hidden node colors based on activation for selected concept
+        for (let j = 0; j < networkData.hidden_dim; j++) {
+            d3.select(`#node-Hidden-h${j}`)
+                .transition()
+                .duration(50)
+                .attr("fill", activationColor(hiddenVals[j]));
+        }
+
+        // Update property node colors based on predictions for selected concept
+        networkData.properties.forEach((prop, pi) => {
+            d3.select(`#node-Properties-${prop}`)
+                .transition()
+                .duration(50)
+                .attr("fill", activationColor(predVals[pi]));
+        });
+
+        // Dim ALL regular concept connections first
+        for (let ci = 0; ci < networkData.concepts.length; ci++) {
+            for (let j = 0; j < networkData.hidden_dim; j++) {
+                const isSelected = !isLesionConcept && ci === conceptIdx;
+                d3.select(`#conn-in-${ci}-${j}`)
+                    .classed('highlighted', false)
+                    .classed('dimmed', !isSelected)
+                    .style("stroke-opacity", isSelected ? null : 0.03);
+            }
+        }
+
+        // Dim ALL lesion concept connections
+        for (let li = 0; li < lesionConcepts.length; li++) {
+            for (let j = 0; j < networkData.hidden_dim; j++) {
+                const isSelected = isLesionConcept && li === lesionIdx;
+                d3.select(`#conn-lesion-${li}-${j}`)
+                    .classed('highlighted', false)
+                    .classed('dimmed', !isSelected)
+                    .style("stroke-opacity", isSelected ? null : 0.03);
+            }
+        }
+
+        // Highlight input->hidden connections for selected concept with weight colors
+        if (isLesionConcept) {
+            for (let j = 0; j < networkData.hidden_dim; j++) {
+                const weight = inputWeights[j];
+                const normalizedWeight = (weight + 1) / 2;
+                d3.select(`#conn-lesion-${lesionIdx}-${j}`)
+                    .classed('dimmed', false)
+                    .classed('highlighted', true)
+                    .transition()
+                    .duration(50)
+                    .style("stroke", weightColor(normalizedWeight))
+                    .style("stroke-opacity", 0.7 + Math.abs(weight) * 0.3)
+                    .attr("stroke-width", 2);
+            }
+        } else {
+            for (let j = 0; j < networkData.hidden_dim; j++) {
+                const weight = inputWeights[j];
+                const normalizedWeight = (weight + 1) / 2;
+                d3.select(`#conn-in-${conceptIdx}-${j}`)
+                    .classed('dimmed', false)
+                    .classed('highlighted', true)
+                    .transition()
+                    .duration(50)
+                    .style("stroke", weightColor(normalizedWeight))
+                    .style("stroke-opacity", 0.7 + Math.abs(weight) * 0.3)
+                    .attr("stroke-width", 2);
+            }
+        }
+
+        // Update hidden->output connections based on weights
+        for (let j = 0; j < networkData.hidden_dim; j++) {
+            for (let k = 0; k < networkData.properties.length; k++) {
+                const weight = weights.W_out[j][k];
+                const normalizedWeight = (weight + 1) / 2;
+                d3.select(`#conn-out-${j}-${k}`)
+                    .classed('dimmed', false)
+                    .transition()
+                    .duration(50)
+                    .style("stroke", weightColor(normalizedWeight))
+                    .attr("stroke-width", 1)
+                    .style("stroke-opacity", 0.3 + Math.abs(weight) * 0.5);
+            }
+        }
+    }
+
+    function updatePredictions() {
+        const container = document.getElementById('predictionsList');
+
+        if (!trainData || !selectedConcept) {
+            container.innerHTML = 'Train the network first';
+            return;
+        }
+
+        const isLesionConcept = lesionConcepts.includes(selectedConcept);
+        const conceptIdx = networkData.concepts.indexOf(selectedConcept);
+        const lesionIdx = lesionConcepts.indexOf(selectedConcept);
+
+        let predVals, targets;
+
+        if (isLesionConcept && lesionData) {
+            // Get data from lesion history using lesion-specific scrubber step
+            const lesionStepCount = lesionData.prediction_history[lesionIdx].length;
+            const lesionStep = Math.min(currentLesionStep, lesionStepCount - 1);
+            predVals = lesionData.prediction_history[lesionIdx][lesionStep];
+            targets = lesionData.targets[lesionIdx];
+        } else {
+            predVals = trainData.prediction_history[currentStep][conceptIdx];
+            targets = networkData.targets[conceptIdx];
+        }
+
+        container.innerHTML = networkData.properties.map((prop, i) => {
+            const pred = predVals[i];
+            const target = targets[i];
+            const color = target === 1 ? '#22c55e' : '#ef4444';
+            const match = (pred > 0.5) === (target === 1);
+
+            return `
+                <div class="prediction-row">
+                    <span class="prop-name" style="color: ${match ? '#e2e8f0' : '#f87171'}">${prop}</span>
+                    <div class="prop-bar">
+                        <div class="prop-fill" style="width: ${pred * 100}%; background: ${color}"></div>
+                    </div>
+                    <span class="prop-value">${pred.toFixed(2)}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderLossChart() {
+        if (!trainData) return;
+
+        const container = document.querySelector('.loss-chart-container');
+        const chartSvg = d3.select("#loss-chart");
+        const width = container.clientWidth - 32;
+        const height = 80;
+
+        chartSvg.attr("width", width).attr("height", height);
+        chartSvg.selectAll("*").remove();
+
+        const losses = trainData.losses;
+        const maxLoss = Math.max(...losses);
+
+        const xScale = d3.scaleLinear()
+            .domain([0, losses.length - 1])
+            .range([25, width - 5]);
+
+        const yScale = d3.scaleLinear()
+            .domain([0, maxLoss])
+            .range([height - 15, 5]);
+
+        // Draw axes (minimal for small card)
+        chartSvg.append("g")
+            .attr("transform", `translate(0,${height - 15})`)
+            .call(d3.axisBottom(xScale).ticks(3).tickSize(3))
+            .attr("color", "#64748b")
+            .attr("font-size", "8px");
+
+        chartSvg.append("g")
+            .attr("transform", "translate(25,0)")
+            .call(d3.axisLeft(yScale).ticks(2).tickSize(3))
+            .attr("color", "#64748b")
+            .attr("font-size", "8px");
+
+        // Draw line
+        const line = d3.line()
+            .x((d, i) => xScale(i))
+            .y(d => yScale(d));
+
+        chartSvg.append("path")
+            .datum(losses)
+            .attr("fill", "none")
+            .attr("stroke", "#8b5cf6")
+            .attr("stroke-width", 2)
+            .attr("d", line);
+
+        // Draw marker for current step
+        chartSvg.append("circle")
+            .attr("id", "loss-marker")
+            .attr("cx", xScale(currentStep))
+            .attr("cy", yScale(losses[currentStep]))
+            .attr("r", 5)
+            .attr("fill", "#fbbf24");
+    }
+
+    function updateLossMarker() {
+        if (!trainData) return;
+
+        const container = document.querySelector('.loss-chart-container');
+        const width = container.clientWidth - 32;
+        const height = 80;
+
+        const xScale = d3.scaleLinear()
+            .domain([0, trainData.losses.length - 1])
+            .range([25, width - 5]);
+
+        const yScale = d3.scaleLinear()
+            .domain([0, Math.max(...trainData.losses)])
+            .range([height - 15, 5]);
+
+        d3.select("#loss-marker")
+            .attr("cx", xScale(currentStep))
+            .attr("cy", yScale(trainData.losses[currentStep]));
+    }
+
+    function playbackStep(delta) {
+        updateStep(currentStep + delta);
+    }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+
+        if (isPlaying) {
+            btn.textContent = 'Pause';
+            playInterval = setInterval(() => {
+                if (currentStep >= trainData.losses.length - 1) {
+                    currentStep = 0;
+                }
+                updateStep(currentStep + 1);
+            }, 100);
+        } else {
+            btn.textContent = 'Play';
+            clearInterval(playInterval);
+        }
+    }
+
+    function updateStatus(type, message) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = message;
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        if (networkData) {
+            renderNetwork();
+            if (trainData) {
+                renderLossChart();
+                updateStep(currentStep);
+            }
+        }
+    });
+
+    // Initialize on load
+    init();
+</script>
+
+</body>
+</html>

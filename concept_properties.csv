@@ -1,0 +1,9 @@
+concept,is_living,is_plant,is_animal,is_tree,is_flower,is_bird,is_fish,is_pretty,is_big,is_green,is_red,is_yellow,can_grow,can_move,can_swim,can_fly,can_sing,has_skin,has_roots,has_leaves,has_bark,has_branches,has_petals,has_wings,has_feathers,has_gills,has_scales
+pine,1,1,0,1,0,0,0,0,1,1,0,0,1,0,0,0,0,0,1,1,1,1,0,0,0,0,0
+oak,1,1,0,1,0,0,0,0,1,1,0,0,1,0,0,0,0,0,1,1,1,1,0,0,0,0,0
+rose,1,1,0,0,1,0,0,1,0,1,1,0,1,0,0,0,0,0,1,1,0,0,1,0,0,0,0
+daisy,1,1,0,0,1,0,0,1,0,1,0,1,1,0,0,0,0,0,1,1,0,0,1,0,0,0,0
+robin,1,0,1,0,0,1,0,1,0,0,1,0,1,1,0,1,1,1,0,0,0,0,0,1,1,0,0
+canary,1,0,1,0,0,1,0,1,0,0,0,1,1,1,0,1,1,1,0,0,0,0,0,1,1,0,0
+sunfish,1,0,1,0,0,0,1,1,0,0,0,1,1,1,1,0,0,1,0,0,0,0,0,0,0,1,1
+salmon,1,0,1,0,0,0,1,0,1,0,1,0,1,1,1,0,0,1,0,0,0,0,0,0,0,1,1
