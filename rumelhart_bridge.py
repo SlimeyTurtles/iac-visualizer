@@ -30,7 +30,7 @@ def train_model(params, csv_path='concept_properties.csv'):
     eta = float(params.get('eta', 0.01))
     epochs = int(params.get('epochs', 2000))
 
-    _model = RumelhartModel(csv_path, hidden_dim=hidden_dim, eta=eta)
+    _model = RumelhartModel(csv_path, hidden_dim=hidden_dim, learning_rate=eta)
 
     # Train and collect detailed history
     losses = []
@@ -56,10 +56,10 @@ def train_model(params, csv_path='concept_properties.csv'):
             delta_out = (t - y) * (y * (1.0 - y))
             delta_h = (_model.W_out @ delta_out) * (h * (1.0 - h))
 
-            _model.W_out += _model.eta * torch.ger(h, delta_out)
-            _model.b_out += _model.eta * delta_out
-            _model.W_in[i] += _model.eta * delta_h
-            _model.b_h += _model.eta * delta_h
+            _model.W_out += _model.learning_rate * torch.ger(h, delta_out)
+            _model.b_out += _model.learning_rate * delta_out
+            _model.W_in[i] += _model.learning_rate * delta_h
+            _model.b_h += _model.learning_rate * delta_h
 
         avg_loss = total_loss / _model.n_concepts
 

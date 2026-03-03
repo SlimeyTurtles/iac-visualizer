@@ -19,7 +19,7 @@ class RumelhartModel:
         self,
         csv_path: str,
         hidden_dim: int = 8,
-        eta: float = 0.01,          # the "tiny nudge" amount (learning rate)
+        learning_rate: float = 0.01,
         seed: int = 42,
         device: Optional[str] = None,
     ):
@@ -38,7 +38,7 @@ class RumelhartModel:
         self.n_concepts = len(self.concepts)
         self.n_properties = len(self.properties)
         self.hidden_dim = hidden_dim
-        self.eta = eta
+        self.learning_rate = learning_rate
 
         self.concept_to_idx = {c: i for i, c in enumerate(self.concepts)}
         self.property_to_idx = {p: j for j, p in enumerate(self.properties)}
@@ -62,86 +62,48 @@ class RumelhartModel:
         self.W_out = torch.randn(hidden_dim, self.n_properties, device=self.device) * 0.01
         self.b_out = torch.zeros(self.n_properties, device=self.device)
 
-    # ---------- Forward ----------
-    def _sigmoid(self, x: torch.Tensor) -> torch.Tensor:
-        return 1.0 / (1.0 + torch.exp(-x))
+    def forward(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Batch forward: returns H (n_concepts, hidden_dim), Y_pred (n_concepts, n_properties)."""
+        H = torch.sigmoid(self.W_in + self.b_h)
+        Y_pred = torch.sigmoid(H @ self.W_out + self.b_out)
+        return H, Y_pred
 
-    def forward_from_index(self, concept_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Returns:
-          h: (hidden_dim,)
-          y: (n_properties,)
-        """
-        h_net = self.W_in[concept_idx] + self.b_h
-        h = self._sigmoid(h_net)
+    def predict_properties(self) -> pd.DataFrame:
+        """Returns predictions for all concepts as a DataFrame."""
+        _, Y_pred = self.forward()
+        return pd.DataFrame(
+            Y_pred.detach().cpu().numpy(),
+            index=self.concepts,
+            columns=self.properties,
+        )
 
-        y_net = h @ self.W_out + self.b_out
-        y = self._sigmoid(y_net)
-        return h, y
+    def hidden_representations(self) -> torch.Tensor:
+        """Returns hidden representations for all concepts: (n_concepts, hidden_dim)."""
+        H, _ = self.forward()
+        return H.detach().clone()
 
-    def predict_properties(self, concept_name: str) -> Dict[str, float]:
-        idx = self._require_concept(concept_name)
-        _, y = self.forward_from_index(idx)
-        vals = y.detach().cpu().tolist()
-        return {p: vals[j] for j, p in enumerate(self.properties)}
-
-    def hidden_representation(self, concept_name: str) -> torch.Tensor:
-        idx = self._require_concept(concept_name)
-        h, _ = self.forward_from_index(idx)
-        return h.detach().clone()
-
-    # ---------- Error-correction learning (manual backprop) ----------
-    def train(self, epochs: int = 20000, verbose_every: int = 200, shuffle: bool = True) -> List[float]:
-        """
-        Classic online error-correction:
-        - present one concept
-        - compute output error
-        - backpropagate error to hidden
-        - nudge weights by eta
-        """
+    def train(self, epochs: int = 20000, verbose_every: int = 200) -> List[float]:
+        """Batch gradient descent over all concepts."""
         losses: List[float] = []
 
         for epoch in range(1, epochs + 1):
-            if shuffle:
-                order = torch.randperm(self.n_concepts, device=self.device).tolist()
-            else:
-                order = list(range(self.n_concepts))
+            H, Y_pred = self.forward()
 
-            total_loss = 0.0
-
-            for i in order:
-                # Forward
-                h, y = self.forward_from_index(i)
-                t = self.Y[i]  # target properties
-
-                # Squared error (classic in early connectionist demos)
-                # E = 0.5 * sum_k (t_k - y_k)^2
-                e = (t - y)
-                loss = 0.5 * torch.sum(e * e)
-                total_loss += float(loss.detach().cpu())
-
-                # --- Backprop deltas (sigmoid derivative) ---
-                # output delta: δ_out = (t - y) * y*(1-y)
-                delta_out = (t - y) * (y * (1.0 - y))  # (n_properties,)
-
-                # hidden delta: δ_h = (W_out @ δ_out) * h*(1-h)
-                # (hidden_dim,)
-                delta_h = (self.W_out @ delta_out) * (h * (1.0 - h))
-
-                # --- Weight nudges ---
-                # W_out += eta * (h[:,None] @ delta_out[None,:])
-                # b_out += eta * delta_out
-                self.W_out += self.eta * torch.ger(h, delta_out)
-                self.b_out += self.eta * delta_out
-
-                # For one-hot input, only the row W_in[i] gets updated:
-                # W_in[i] += eta * delta_h
-                # b_h += eta * delta_h
-                self.W_in[i] += self.eta * delta_h
-                self.b_h += self.eta * delta_h
-
-            avg_loss = total_loss / self.n_concepts
+            # Squared error
+            E = self.Y - Y_pred
+            loss = 0.5 * torch.sum(E ** 2)
+            avg_loss = float(loss.detach().cpu()) / self.n_concepts
             losses.append(avg_loss)
+
+            # Backprop as matrices
+            delta_out = E * (Y_pred * (1.0 - Y_pred))                # (n_concepts, n_properties)
+            delta_h = (delta_out @ self.W_out.T) * (H * (1.0 - H))   # (n_concepts, hidden_dim)
+
+            # Update weights
+            self.W_out += self.learning_rate * (H.T @ delta_out)
+            self.b_out += self.learning_rate * delta_out.sum(dim=0)
+            self.W_in  += self.learning_rate * delta_h
+            self.b_h   += self.learning_rate * delta_h.sum(dim=0)
 
             if verbose_every and (epoch % verbose_every == 0 or epoch == 1 or epoch == epochs):
                 print(f"Epoch {epoch:>4}/{epochs} | avg_loss={avg_loss:.6f}")
@@ -178,7 +140,9 @@ class RumelhartModel:
 
         Only W_in[row_of_new_concept] and b_h are updated.
         """
-        i = self._require_concept(new_concept_name)
+        if new_concept_name not in self.concept_to_idx:
+            raise ValueError(f"Unknown concept '{new_concept_name}'")
+        i = self.concept_to_idx[new_concept_name]
 
         t = torch.zeros(self.n_properties, device=self.device)
         for prop, val in known_properties.items():
@@ -189,8 +153,9 @@ class RumelhartModel:
         losses: List[float] = []
 
         for step in range(1, steps + 1):
-            # Forward with frozen W_out/b_out (we simply do not update them)
-            h, y = self.forward_from_index(i)
+            # Forward single concept (frozen W_out/b_out)
+            h = torch.sigmoid(self.W_in[i] + self.b_h)
+            y = torch.sigmoid(h @ self.W_out + self.b_out)
 
             e = (t - y)
             loss = 0.5 * torch.sum(e * e)
@@ -201,24 +166,18 @@ class RumelhartModel:
             delta_h = (self.W_out @ delta_out) * (h * (1.0 - h))
 
             # Update ONLY new concept input->hidden row + hidden bias
-            self.W_in[i] += self.eta * delta_h
-            self.b_h += self.eta * delta_h
+            self.W_in[i] += self.learning_rate * delta_h
+            self.b_h += self.learning_rate * delta_h
 
             if verbose_every and (step % verbose_every == 0 or step == 1 or step == steps):
                 print(f"[{new_concept_name}] step {step:>4}/{steps} | loss={losses[-1]:.6f}")
 
         return losses
 
-    # ---------- Helpers ----------
-    def _require_concept(self, concept_name: str) -> int:
-        if concept_name not in self.concept_to_idx:
-            raise ValueError(f"Unknown concept '{concept_name}'. Available: {self.concepts}")
-        return self.concept_to_idx[concept_name]
-
 
 if __name__ == "__main__":
     # Train base network
-    m = RumelhartModel("concept_properties.csv", hidden_dim=8, eta=0.01)
+    m = RumelhartModel("concept_properties.csv", hidden_dim=8, learning_rate=0.01)
     m.train(epochs=2000, verbose_every=200)
 
     # Add sparrow and teach ONLY ISA facts (like the book demo)
@@ -232,6 +191,6 @@ if __name__ == "__main__":
 
     # See if it generalizes to other bird properties
     print("\nTop predicted properties for sparrow:")
-    preds = m.predict_properties("sparrow")
-    for k, v in sorted(preds.items(), key=lambda kv: kv[1], reverse=True)[:12]:
-        print(f"{k:>20}: {v:.3f}")
+    preds = m.predict_properties().loc["sparrow"].sort_values(ascending=False)
+    for prop, val in preds.head(12).items():
+        print(f"{prop:>20}: {val:.3f}")
