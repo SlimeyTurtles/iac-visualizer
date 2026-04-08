@@ -1312,6 +1312,23 @@
                     const tooltip = document.getElementById('tooltip');
                     document.getElementById('tooltip-name').textContent = `Hub ${hubIdx}`;
 
+                    // Build template weights display - show expected activations per pool
+                    let weightsHtml = '<div style="margin-bottom: 10px;">';
+                    let featureIdx = 0;
+                    networkData.pool_names.forEach((poolName, poolIdx) => {
+                        const poolFeatures = networkData.features[poolName];
+                        weightsHtml += `<div style="margin: 6px 0;"><span style="font-size: 0.7rem; color: #64748b;">${poolName}:</span><div style="display: flex; gap: 4px; margin-top: 2px;">`;
+                        poolFeatures.forEach((feature, fi) => {
+                            const weight = template[featureIdx + fi];
+                            const intensity = Math.min(1, weight * 1.5); // Scale for visibility
+                            const bgColor = `rgba(251, 191, 36, ${intensity})`;
+                            weightsHtml += `<span style="padding: 2px 6px; background: ${bgColor}; border-radius: 3px; font-size: 0.7rem; color: ${intensity > 0.5 ? '#1e293b' : '#e2e8f0'};">${feature}: ${weight.toFixed(2)}</span>`;
+                        });
+                        weightsHtml += '</div></div>';
+                        featureIdx += poolFeatures.length;
+                    });
+                    weightsHtml += '</div>';
+
                     // Compute pool similarities for current episode vs this hub's template
                     const episodeVec = networkData.X[selectedEpisode];
                     const poolSims = computePoolSimilaritiesForDisplay(episodeVec, template, networkData.pool_sizes);
@@ -1341,9 +1358,11 @@
                         .map(a => a.episode_name);
 
                     document.getElementById('tooltip-content').innerHTML =
-                        `<div style="margin-bottom: 6px;">Final episodes: ${assigned.join(', ') || 'None'}</div>` +
+                        `<div style="font-size: 0.7rem; color: #64748b; margin-bottom: 4px;">Expected weights:</div>` +
+                        weightsHtml +
                         `<div style="font-size: 0.7rem; color: #64748b; margin-bottom: 4px;">Similarity to current episode:</div>` +
-                        simsHtml;
+                        simsHtml +
+                        `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #334155; font-size: 0.75rem;">Final episodes: ${assigned.join(', ') || 'None'}</div>`;
 
                     const rect = event.target.getBoundingClientRect();
                     const container = document.getElementById('viz-container').getBoundingClientRect();
