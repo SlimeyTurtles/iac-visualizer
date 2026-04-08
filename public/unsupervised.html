@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unsupervised Concept Model Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #0a0f1a;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 340px;
+            background: #111827;
+            padding: 24px;
+            border-right: 1px solid #1f2937;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        #sidebar::-webkit-scrollbar {
+            display: none;
+        }
+
+        #sidebar h2 {
+            margin: 0 0 8px 0;
+            font-size: 1.4rem;
+            color: #f8fafc;
+            border-bottom: 2px solid #f59e0b;
+            padding-bottom: 12px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .nav-link {
+            color: #94a3b8;
+            font-size: 0.8rem;
+            text-decoration: none;
+        }
+
+        .nav-link:hover {
+            color: #e2e8f0;
+        }
+
+        .param-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .param-group label {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        .param-group input[type="number"] {
+            width: 100%;
+            padding: 10px 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #f1f5f9;
+            font-size: 0.95rem;
+        }
+
+        .param-group input[type="number"]:focus {
+            outline: none;
+            border-color: #f59e0b;
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+        }
+
+        #trainBtn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #trainBtn:hover {
+            background: linear-gradient(135deg, #d97706, #b45309);
+            transform: translateY(-1px);
+        }
+
+        #trainBtn:disabled {
+            background: #374151;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .scrubber-section {
+            background: #1e293b;
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .scrubber-section label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .scrubber-section #stepLabel {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #334155;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #f59e0b;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .playback-controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .playback-controls button {
+            flex: 1;
+            padding: 8px;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #e2e8f0;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .playback-controls button:hover {
+            background: #475569;
+        }
+
+        #main-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #viz-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node {
+            cursor: pointer;
+            stroke: #1e293b;
+            stroke-width: 2px;
+            transition: stroke 0.15s, stroke-width 0.15s;
+        }
+
+        .node:hover {
+            stroke: #fbbf24;
+            stroke-width: 3px;
+        }
+
+        .node.selected {
+            stroke: #22c55e;
+            stroke-width: 4px;
+        }
+
+        .node.winner {
+            stroke: #f59e0b;
+            stroke-width: 4px;
+        }
+
+        .node-label {
+            fill: #cbd5e1;
+            font-size: 10px;
+            pointer-events: none;
+            font-weight: 500;
+        }
+
+        .layer-label {
+            fill: #64748b;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .layer-bg {
+            fill: #111827;
+            stroke: #1f2937;
+            stroke-width: 1px;
+            rx: 12;
+        }
+
+        .connection {
+            fill: none;
+            stroke-opacity: 0.3;
+            pointer-events: none;
+        }
+
+        .connection.positive {
+            stroke: #22c55e;
+        }
+
+        .connection.negative {
+            stroke: #ef4444;
+        }
+
+        .connection.highlighted {
+            stroke-opacity: 1;
+            stroke-width: 3;
+        }
+
+        .connection.dimmed {
+            stroke-opacity: 0.05;
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #111827;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+        }
+
+        .legend h4 {
+            margin: 0 0 12px 0;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .legend-gradient {
+            width: 150px;
+            height: 16px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        .info-card {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 300px;
+            max-height: 350px;
+            background: #111827;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            z-index: 100;
+            overflow-y: auto;
+        }
+
+        .info-card h4 {
+            margin: 0 0 12px 0;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 0.8rem;
+            border-bottom: 1px solid #1f2937;
+        }
+
+        .info-row .label {
+            color: #94a3b8;
+        }
+
+        .info-row .value {
+            color: #e2e8f0;
+            font-weight: 500;
+        }
+
+        .info-row .value.snap {
+            color: #22c55e;
+        }
+
+        .info-row .value.recruit {
+            color: #f59e0b;
+        }
+
+        .pool-similarity-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0;
+        }
+
+        .pool-similarity-bar .name {
+            width: 60px;
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .pool-similarity-bar .bar {
+            flex: 1;
+            height: 12px;
+            background: #334155;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .pool-similarity-bar .fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.3s;
+        }
+
+        .pool-similarity-bar .threshold {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #ef4444;
+        }
+
+        .pool-similarity-bar .value {
+            width: 40px;
+            font-size: 0.75rem;
+            text-align: right;
+            color: #e2e8f0;
+        }
+
+        .episode-list {
+            background: #1e293b;
+            padding: 12px;
+            border-radius: 6px;
+        }
+
+        .episode-list h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .episode-btn {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #e2e8f0;
+            font-size: 0.75rem;
+            cursor: pointer;
+            margin: 2px;
+            transition: all 0.15s;
+        }
+
+        .episode-btn:hover {
+            background: #475569;
+        }
+
+        .episode-btn.active {
+            background: #f59e0b;
+            color: #1e293b;
+        }
+
+        .hub-list {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #334155;
+        }
+
+        .hub-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 8px;
+            background: #1e293b;
+            border-radius: 4px;
+            margin: 4px 0;
+            font-size: 0.8rem;
+        }
+
+        .hub-item .hub-id {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+
+        .hub-item .members {
+            color: #94a3b8;
+            font-size: 0.7rem;
+        }
+
+        .status {
+            font-size: 0.8rem;
+            color: #64748b;
+            text-align: center;
+            padding: 8px;
+        }
+
+        .status.running {
+            color: #fbbf24;
+        }
+
+        .status.ready {
+            color: #22c55e;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 1000;
+            min-width: 180px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+        }
+
+        .tooltip-header {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #f1f5f9;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .tooltip-content {
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .reset-view-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.2s;
+        }
+
+        .reset-view-btn:hover {
+            background: #475569;
+            border-color: #f59e0b;
+        }
+
+        .section-header {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #f59e0b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 16px 0 8px 0;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .params-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div class="nav-links">
+        <a href="/" class="nav-link">&larr; IAC</a>
+        <a href="/rumelhart.html" class="nav-link">Rumelhart &rarr;</a>
+    </div>
+    <h2>Unsupervised Concepts</h2>
+
+    <div class="section-header">Hyperparameters</div>
+
+    <div class="params-grid">
+        <div class="param-group">
+            <label>Vigilance</label>
+            <input type="number" id="vigilance" value="0.7" step="0.05" min="0" max="1">
+        </div>
+        <div class="param-group">
+            <label>Learning Rate</label>
+            <input type="number" id="learningRate" value="0.1" step="0.01" min="0.01" max="1">
+        </div>
+        <div class="param-group">
+            <label>Gain</label>
+            <input type="number" id="gain" value="1.0" step="0.1" min="0.1" max="5">
+        </div>
+        <div class="param-group">
+            <label>Inhibition</label>
+            <input type="number" id="inhibition" value="0.2" step="0.05" min="0" max="1">
+        </div>
+    </div>
+
+    <div class="param-group">
+        <label>Training Passes</label>
+        <input type="number" id="numPasses" value="3" min="1" max="10">
+    </div>
+
+    <div class="section-header">Training</div>
+
+    <button id="trainBtn" onclick="runTraining()">TRAIN MODEL</button>
+
+    <div class="scrubber-section" id="scrubberSection" style="display: none;">
+        <label>
+            <span>Training Step</span>
+            <span id="stepLabel">0 / 0</span>
+        </label>
+        <input type="range" id="scrubber" min="0" max="0" value="0" oninput="updateStep(parseInt(this.value))">
+        <div class="playback-controls">
+            <button onclick="playbackStep(-5)">-5</button>
+            <button onclick="playbackStep(-1)">-1</button>
+            <button onclick="togglePlay()" id="playBtn">Play</button>
+            <button onclick="playbackStep(1)">+1</button>
+            <button onclick="playbackStep(5)">+5</button>
+        </div>
+    </div>
+
+    <div class="section-header">Episodes</div>
+
+    <div class="episode-list">
+        <h4>Select Episode</h4>
+        <div id="episodeButtons">Loading...</div>
+    </div>
+
+    <div class="hub-list" id="hubListSection" style="display: none;">
+        <h4 style="margin: 0 0 8px 0; font-size: 0.8rem; color: #94a3b8;">Learned Hubs</h4>
+        <div id="hubList"></div>
+    </div>
+
+    <div id="status" class="status">Loading data...</div>
+</div>
+
+<div id="main-container">
+    <div id="viz-container">
+        <svg id="canvas"></svg>
+        <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+        <div id="tooltip" class="tooltip">
+            <div class="tooltip-header" id="tooltip-name"></div>
+            <div class="tooltip-content" id="tooltip-content"></div>
+        </div>
+        <div class="legend">
+            <h4>Activation Level</h4>
+            <div class="legend-gradient" id="legendGradient"></div>
+            <div class="legend-labels">
+                <span>0.0</span>
+                <span>0.5</span>
+                <span>1.0</span>
+            </div>
+        </div>
+        <div class="info-card" id="infoCard">
+            <h4>Step Information</h4>
+            <div id="stepInfo">Train the model to see step details</div>
+            <div id="poolSimilarities" style="margin-top: 12px;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Default dataset (will be populated from unsupervised_data.py structure)
+    const DEFAULT_DATA = {
+        pool_sizes: [4, 4, 3, 3],
+        pool_names: ["Color", "Shape", "Size", "Texture"],
+        features: {
+            "Color": ["red", "green", "blue", "yellow"],
+            "Shape": ["circle", "square", "triangle", "star"],
+            "Size": ["small", "medium", "large"],
+            "Texture": ["smooth", "rough", "bumpy"]
+        },
+        episodes: [
+            {name: "apple1", Color: "red", Shape: "circle", Size: "small", Texture: "smooth"},
+            {name: "apple2", Color: "red", Shape: "circle", Size: "medium", Texture: "smooth"},
+            {name: "apple3", Color: "green", Shape: "circle", Size: "small", Texture: "smooth"},
+            {name: "orange1", Color: "yellow", Shape: "circle", Size: "medium", Texture: "bumpy"},
+            {name: "orange2", Color: "yellow", Shape: "circle", Size: "small", Texture: "bumpy"},
+            {name: "block1", Color: "red", Shape: "square", Size: "large", Texture: "smooth"},
+            {name: "block2", Color: "blue", Shape: "square", Size: "medium", Texture: "smooth"},
+            {name: "block3", Color: "yellow", Shape: "square", Size: "small", Texture: "smooth"},
+            {name: "block4", Color: "green", Shape: "square", Size: "large", Texture: "smooth"},
+            {name: "rock1", Color: "blue", Shape: "triangle", Size: "small", Texture: "rough"},
+            {name: "rock2", Color: "blue", Shape: "triangle", Size: "medium", Texture: "rough"},
+            {name: "rock3", Color: "green", Shape: "triangle", Size: "large", Texture: "rough"},
+            {name: "star1", Color: "yellow", Shape: "star", Size: "small", Texture: "smooth"},
+            {name: "star2", Color: "yellow", Shape: "star", Size: "large", Texture: "smooth"},
+            {name: "gem1", Color: "blue", Shape: "star", Size: "small", Texture: "smooth"},
+            {name: "ball1", Color: "green", Shape: "circle", Size: "large", Texture: "rough"}
+        ]
+    };
+
+    // State
+    let networkData = null;
+    let trainData = null;
+    let selectedEpisode = 0;
+    let currentStep = 0;
+    let isPlaying = false;
+    let playInterval = null;
+
+    // D3 elements
+    const svg = d3.select("#canvas");
+    let g;
+    let zoomBehavior;
+
+    // Color scale for activations (0 to 1)
+    const activationColor = d3.scaleSequential()
+        .domain([0, 1])
+        .interpolator(d3.interpolateYlOrRd);
+
+    // Hub color scale
+    const hubColors = d3.schemeCategory10;
+
+    function init() {
+        setupZoom();
+        setupLegendGradient();
+        loadData();
+    }
+
+    function setupZoom() {
+        zoomBehavior = d3.zoom()
+            .scaleExtent([0.3, 3])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+
+        svg.call(zoomBehavior);
+        g = svg.append("g");
+    }
+
+    function resetView() {
+        svg.transition()
+            .duration(300)
+            .call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    function setupLegendGradient() {
+        const gradient = document.getElementById('legendGradient');
+        gradient.style.background = `linear-gradient(to right, ${activationColor(0)}, ${activationColor(0.5)}, ${activationColor(1)})`;
+    }
+
+    function loadData() {
+        networkData = DEFAULT_DATA;
+        networkData.X = episodesToVectors(networkData.episodes, networkData.features, networkData.pool_sizes);
+
+        renderNetwork();
+        updateEpisodeButtons();
+        updateStatus('ready', `Loaded ${networkData.episodes.length} episodes, ${sum(networkData.pool_sizes)} features`);
+    }
+
+    function episodesToVectors(episodes, features, pool_sizes, sigma = 1.0) {
+        // Convert episodes to vectors with Gaussian activation
+        // Instead of one-hot, features get partial activation based on
+        // distance from the center feature (Gaussian distribution)
+        const pool_names = Object.keys(features);
+        return episodes.map(ep => {
+            const vec = [];
+            pool_names.forEach((pool, i) => {
+                const pool_features = features[pool];
+                const pool_vec = new Array(pool_sizes[i]).fill(0);
+                if (ep[pool] && pool_features.includes(ep[pool])) {
+                    const centerIdx = pool_features.indexOf(ep[pool]);
+                    // Apply Gaussian activation to all features in the pool
+                    for (let j = 0; j < pool_features.length; j++) {
+                        const distance = Math.abs(j - centerIdx);
+                        // Gaussian: exp(-d^2 / (2 * sigma^2))
+                        pool_vec[j] = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+                    }
+                }
+                vec.push(...pool_vec);
+            });
+            return vec;
+        });
+    }
+
+    function sum(arr) {
+        return arr.reduce((a, b) => a + b, 0);
+    }
+
+    function computePoolSimilaritiesForDisplay(x, y, pool_sizes) {
+        const sims = [];
+        let start = 0;
+        for (const size of pool_sizes) {
+            const end = start + size;
+            const xp = x.slice(start, end);
+            const yp = y.slice(start, end);
+
+            const xNorm = Math.sqrt(xp.reduce((s, v) => s + v * v, 0));
+            const yNorm = Math.sqrt(yp.reduce((s, v) => s + v * v, 0));
+
+            if (xNorm < 1e-8 || yNorm < 1e-8) {
+                sims.push(0);
+            } else {
+                let dot = 0;
+                for (let i = 0; i < xp.length; i++) {
+                    dot += xp[i] * yp[i];
+                }
+                sims.push(dot / (xNorm * yNorm + 1e-8));
+            }
+            start = end;
+        }
+        return sims;
+    }
+
+    function updateEpisodeButtons() {
+        const container = document.getElementById('episodeButtons');
+        if (!networkData) {
+            container.innerHTML = 'Loading...';
+            return;
+        }
+
+        container.innerHTML = networkData.episodes.map((ep, i) =>
+            `<button class="episode-btn ${i === selectedEpisode ? 'active' : ''}" onclick="selectEpisode(${i})">${ep.name}</button>`
+        ).join('');
+    }
+
+    function selectEpisode(idx) {
+        selectedEpisode = idx;
+        updateEpisodeButtons();
+        updateVisualization();
+    }
+
+    function renderNetwork() {
+        if (!networkData) return;
+
+        const container = document.getElementById('viz-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        svg.attr("width", width).attr("height", height);
+        g.selectAll("*").remove();
+
+        const pool_names = networkData.pool_names;
+        const pool_sizes = networkData.pool_sizes;
+        const features = networkData.features;
+
+        // Layout: pools on left, hubs in middle, current episode on right
+        const poolWidth = 120;
+        const hubWidth = 150;
+        const spacing = 100;
+
+        const startX = 80;
+
+        // Calculate positions
+        const poolPositions = {};
+        const nodePositions = {};
+        let currentY = 60;
+
+        // Draw pools vertically stacked
+        pool_names.forEach((poolName, poolIdx) => {
+            const poolFeatures = features[poolName];
+            const poolSize = pool_sizes[poolIdx];
+            const poolHeight = poolSize * 35 + 30;
+
+            poolPositions[poolName] = {
+                x: startX,
+                y: currentY,
+                width: poolWidth,
+                height: poolHeight
+            };
+
+            // Position nodes in this pool
+            poolFeatures.forEach((feature, featureIdx) => {
+                const globalIdx = sum(pool_sizes.slice(0, poolIdx)) + featureIdx;
+                nodePositions[`pool-${poolName}-${feature}`] = {
+                    x: startX + poolWidth / 2,
+                    y: currentY + 5 + featureIdx * 35,
+                    pool: poolName,
+                    feature: feature,
+                    globalIdx: globalIdx
+                };
+            });
+
+            currentY += poolHeight + 45;
+        });
+
+        // Hub area (will be populated during training)
+        const hubAreaX = startX + poolWidth + spacing;
+        const hubAreaY = 60;
+        const hubAreaWidth = hubWidth;
+        const hubAreaHeight = currentY - 80;
+
+        // Draw pool backgrounds
+        g.selectAll(".layer-bg.pool")
+            .data(pool_names)
+            .enter()
+            .append("rect")
+            .attr("class", "layer-bg pool")
+            .attr("x", d => poolPositions[d].x - 10)
+            .attr("y", d => poolPositions[d].y - 30)
+            .attr("width", d => poolPositions[d].width + 20)
+            .attr("height", d => poolPositions[d].height);
+
+        // Draw pool labels
+        g.selectAll(".layer-label.pool")
+            .data(pool_names)
+            .enter()
+            .append("text")
+            .attr("class", "layer-label pool")
+            .attr("x", d => poolPositions[d].x + poolPositions[d].width / 2)
+            .attr("y", d => poolPositions[d].y - 40)
+            .attr("text-anchor", "middle")
+            .text(d => d);
+
+        // Draw hub area background
+        g.append("rect")
+            .attr("class", "layer-bg hub")
+            .attr("x", hubAreaX - 10)
+            .attr("y", hubAreaY - 30)
+            .attr("width", hubAreaWidth + 20)
+            .attr("height", hubAreaHeight);
+
+        g.append("text")
+            .attr("class", "layer-label")
+            .attr("x", hubAreaX + hubAreaWidth / 2)
+            .attr("y", hubAreaY - 40)
+            .attr("text-anchor", "middle")
+            .text("HUBS");
+
+        // Draw pool nodes
+        const nodeGroup = g.append("g").attr("class", "nodes");
+        const connectionGroup = g.append("g").attr("class", "connections");
+
+        const allPoolNodes = Object.entries(nodePositions).map(([key, pos]) => ({
+            key,
+            ...pos
+        }));
+
+        nodeGroup.selectAll(".node.pool-node")
+            .data(allPoolNodes)
+            .enter()
+            .append("circle")
+            .attr("class", "node pool-node")
+            .attr("id", d => `node-${d.key}`)
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y)
+            .attr("r", 12)
+            .attr("fill", "#4b5563")
+            .on("mouseenter", (event, d) => handleNodeHover(event, d, true))
+            .on("mouseleave", (event, d) => handleNodeHover(event, d, false));
+
+        // Draw pool node labels
+        nodeGroup.selectAll(".node-label.pool")
+            .data(allPoolNodes)
+            .enter()
+            .append("text")
+            .attr("class", "node-label pool")
+            .attr("x", d => d.x + 18)
+            .attr("y", d => d.y + 4)
+            .text(d => d.feature);
+
+        // Store positions for later
+        window.nodePositions = nodePositions;
+        window.poolPositions = poolPositions;
+        window.hubArea = { x: hubAreaX, y: hubAreaY, width: hubAreaWidth, height: hubAreaHeight };
+        window.connectionGroup = connectionGroup;
+        window.nodeGroup = nodeGroup;
+    }
+
+    function handleNodeHover(event, d, isEntering) {
+        const tooltip = document.getElementById('tooltip');
+
+        if (isEntering) {
+            document.getElementById('tooltip-name').textContent = d.feature || `Hub ${d.hubIdx}`;
+
+            let content = d.pool ? `Pool: ${d.pool}` : 'Concept Hub';
+
+            if (d.globalIdx !== undefined && networkData.X) {
+                const episodeVec = networkData.X[selectedEpisode];
+                const activation = episodeVec[d.globalIdx];
+                content += `<br>Current activation: ${activation.toFixed(2)}`;
+            }
+
+            document.getElementById('tooltip-content').innerHTML = content;
+
+            const rect = event.target.getBoundingClientRect();
+            const container = document.getElementById('viz-container').getBoundingClientRect();
+            tooltip.style.left = (rect.right - container.left + 10) + 'px';
+            tooltip.style.top = (rect.top - container.top) + 'px';
+            tooltip.classList.add('visible');
+        } else {
+            tooltip.classList.remove('visible');
+        }
+    }
+
+    // Client-side Unsupervised Concept Model
+    class UnsupervisedModel {
+        constructor(pool_sizes, vigilance, learning_rate, gain, inhibition) {
+            this.pool_sizes = pool_sizes;
+            this.total_dim = sum(pool_sizes);
+            this.vigilance = vigilance;
+            this.learning_rate = learning_rate;
+            this.gain = gain;
+            this.inhibition = inhibition;
+            this.templates = []; // Array of template vectors
+            this.pool_slices = [];
+
+            let start = 0;
+            for (const size of pool_sizes) {
+                this.pool_slices.push([start, start + size]);
+                start += size;
+            }
+        }
+
+        normalize(vec) {
+            const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) + 1e-8;
+            return vec.map(v => v / norm);
+        }
+
+        recruitHub(x) {
+            const template = this.normalize([...x]);
+            this.templates.push(template);
+            return this.templates.length - 1;
+        }
+
+        computeBottomUpDrive(x) {
+            if (this.templates.length === 0) return [];
+            const xNorm = this.normalize([...x]);
+            return this.templates.map(template => {
+                let dot = 0;
+                for (let i = 0; i < template.length; i++) {
+                    dot += template[i] * xNorm[i];
+                }
+                return this.gain * dot;
+            });
+        }
+
+        settleCompetition(x, numSteps = 20) {
+            const drive = this.computeBottomUpDrive(x);
+            if (drive.length === 0) return [null, null];
+
+            let acts = new Array(drive.length).fill(0);
+
+            for (let step = 0; step < numSteps; step++) {
+                const totalOther = acts.reduce((s, a) => s + a, 0);
+                acts = acts.map((a, i) => {
+                    const net = drive[i] - this.inhibition * (totalOther - a);
+                    return Math.max(0, net);
+                });
+            }
+
+            let winner = 0;
+            let maxAct = acts[0];
+            for (let i = 1; i < acts.length; i++) {
+                if (acts[i] > maxAct) {
+                    maxAct = acts[i];
+                    winner = i;
+                }
+            }
+
+            return [winner, acts];
+        }
+
+        predictFromHub(hubIdx) {
+            return [...this.templates[hubIdx]];
+        }
+
+        computePoolSimilarities(x, y) {
+            const sims = [];
+            for (const [start, end] of this.pool_slices) {
+                const xp = x.slice(start, end);
+                const yp = y.slice(start, end);
+
+                const xNorm = Math.sqrt(xp.reduce((s, v) => s + v * v, 0));
+                const yNorm = Math.sqrt(yp.reduce((s, v) => s + v * v, 0));
+
+                if (xNorm < 1e-8 || yNorm < 1e-8) {
+                    sims.push(0);
+                } else {
+                    let dot = 0;
+                    for (let i = 0; i < xp.length; i++) {
+                        dot += xp[i] * yp[i];
+                    }
+                    sims.push(dot / (xNorm * yNorm + 1e-8));
+                }
+            }
+            return sims;
+        }
+
+        snapOrRecruit(x) {
+            if (this.templates.length === 0) {
+                const winner = this.recruitHub(x);
+                return {
+                    action: 'recruit',
+                    winner: winner,
+                    pool_similarities: null,
+                    activities: null
+                };
+            }
+
+            const [winner, activities] = this.settleCompetition(x);
+            const y = this.predictFromHub(winner);
+            const poolSims = this.computePoolSimilarities(x, y);
+
+            const passes = poolSims.every(sim => sim >= this.vigilance);
+
+            if (passes) {
+                this.updateHub(winner, x);
+                return {
+                    action: 'snap',
+                    winner: winner,
+                    pool_similarities: poolSims,
+                    activities: activities
+                };
+            } else {
+                const newHub = this.recruitHub(x);
+                return {
+                    action: 'recruit',
+                    winner: newHub,
+                    previous_winner: winner,
+                    pool_similarities: poolSims,
+                    activities: activities
+                };
+            }
+        }
+
+        updateHub(hubIdx, x) {
+            const xNorm = this.normalize([...x]);
+            const old = this.templates[hubIdx];
+            const newTemplate = old.map((o, i) =>
+                (1 - this.learning_rate) * o + this.learning_rate * xNorm[i]
+            );
+            this.templates[hubIdx] = this.normalize(newTemplate);
+        }
+    }
+
+    async function runTraining() {
+        if (!networkData) {
+            updateStatus('error', 'Load data first');
+            return;
+        }
+
+        const btn = document.getElementById('trainBtn');
+        btn.disabled = true;
+        btn.textContent = 'TRAINING...';
+        updateStatus('running', 'Training model...');
+
+        const params = {
+            vigilance: parseFloat(document.getElementById('vigilance').value),
+            learning_rate: parseFloat(document.getElementById('learningRate').value),
+            gain: parseFloat(document.getElementById('gain').value),
+            inhibition: parseFloat(document.getElementById('inhibition').value),
+            num_passes: parseInt(document.getElementById('numPasses').value)
+        };
+
+        try {
+            trainData = trainModelClientSide(networkData, params);
+
+            // Show scrubber
+            document.getElementById('scrubberSection').style.display = 'block';
+            const scrubber = document.getElementById('scrubber');
+            scrubber.max = trainData.history.length - 1;
+            scrubber.value = trainData.history.length - 1;
+
+            currentStep = trainData.history.length - 1;
+            updateStep(currentStep);
+
+            // Show hub list
+            document.getElementById('hubListSection').style.display = 'block';
+            updateHubList();
+
+            updateStatus('ready', `Training complete - ${trainData.num_hubs} hubs learned`);
+
+        } catch (e) {
+            console.error('Training error:', e);
+            updateStatus('error', 'Training failed: ' + e.message);
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'TRAIN MODEL';
+    }
+
+    function trainModelClientSide(data, params) {
+        const model = new UnsupervisedModel(
+            data.pool_sizes,
+            params.vigilance,
+            params.learning_rate,
+            params.gain,
+            params.inhibition
+        );
+
+        const history = [];
+        const hubHistory = [];
+
+        for (let pass = 0; pass < params.num_passes; pass++) {
+            for (let i = 0; i < data.X.length; i++) {
+                const episode = data.X[i];
+                const result = model.snapOrRecruit(episode);
+
+                history.push({
+                    pass: pass,
+                    episode_idx: i,
+                    episode_name: data.episodes[i].name,
+                    action: result.action,
+                    winner: result.winner,
+                    num_hubs: model.templates.length,
+                    pool_similarities: result.pool_similarities,
+                    activities: result.activities,
+                    previous_winner: result.previous_winner
+                });
+
+                hubHistory.push({
+                    step: history.length - 1,
+                    templates: model.templates.map(t => [...t])
+                });
+            }
+        }
+
+        // Final assignments
+        const finalAssignments = [];
+        for (let i = 0; i < data.X.length; i++) {
+            const episode = data.X[i];
+            if (model.templates.length > 0) {
+                const [winner, activities] = model.settleCompetition(episode);
+                const prediction = model.predictFromHub(winner);
+                const poolSims = model.computePoolSimilarities(episode, prediction);
+                finalAssignments.push({
+                    episode_idx: i,
+                    episode_name: data.episodes[i].name,
+                    hub: winner,
+                    activities: activities,
+                    pool_similarities: poolSims
+                });
+            }
+        }
+
+        return {
+            history: history,
+            hub_history: hubHistory,
+            final_templates: model.templates,
+            final_assignments: finalAssignments,
+            num_hubs: model.templates.length,
+            vigilance: params.vigilance
+        };
+    }
+
+    function updateStep(step) {
+        if (!trainData) return;
+
+        step = Math.max(0, Math.min(step, trainData.history.length - 1));
+        currentStep = step;
+
+        document.getElementById('scrubber').value = step;
+        document.getElementById('stepLabel').textContent = `${step} / ${trainData.history.length - 1}`;
+
+        const stepData = trainData.history[step];
+        selectedEpisode = stepData.episode_idx;
+        updateEpisodeButtons();
+
+        updateStepInfo(stepData);
+        updateVisualization();
+        renderHubs(step);
+    }
+
+    function updateStepInfo(stepData) {
+        const infoDiv = document.getElementById('stepInfo');
+        const simsDiv = document.getElementById('poolSimilarities');
+
+        infoDiv.innerHTML = `
+            <div class="info-row">
+                <span class="label">Pass</span>
+                <span class="value">${stepData.pass + 1}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Episode</span>
+                <span class="value">${stepData.episode_name}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Action</span>
+                <span class="value ${stepData.action}">${stepData.action.toUpperCase()}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Winner Hub</span>
+                <span class="value">Hub ${stepData.winner}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Total Hubs</span>
+                <span class="value">${stepData.num_hubs}</span>
+            </div>
+        `;
+
+        if (stepData.pool_similarities) {
+            const vigilance = trainData.vigilance;
+            simsDiv.innerHTML = '<h4 style="margin: 0 0 8px 0; font-size: 0.8rem; color: #94a3b8;">Pool Similarities</h4>' +
+                networkData.pool_names.map((name, i) => {
+                    const sim = stepData.pool_similarities[i];
+                    const passed = sim >= vigilance;
+                    const color = passed ? '#22c55e' : '#ef4444';
+                    return `
+                        <div class="pool-similarity-bar">
+                            <span class="name">${name}</span>
+                            <div class="bar">
+                                <div class="fill" style="width: ${sim * 100}%; background: ${color};"></div>
+                                <div class="threshold" style="left: ${vigilance * 100}%;"></div>
+                            </div>
+                            <span class="value">${sim.toFixed(2)}</span>
+                        </div>
+                    `;
+                }).join('');
+        } else {
+            simsDiv.innerHTML = '';
+        }
+    }
+
+    function updateVisualization() {
+        if (!networkData) return;
+
+        const episodeVec = networkData.X[selectedEpisode];
+
+        // Update pool node colors based on episode activation
+        Object.entries(window.nodePositions).forEach(([key, pos]) => {
+            const activation = episodeVec[pos.globalIdx];
+            d3.select(`#node-${key}`)
+                .transition()
+                .duration(50)
+                .attr("fill", activation > 0.5 ? activationColor(activation) : "#4b5563")
+                .attr("r", activation > 0.5 ? 14 : 12);
+        });
+    }
+
+    function renderHubs(step) {
+        if (!trainData || !window.hubArea) return;
+
+        const hubData = trainData.hub_history[step];
+        const templates = hubData.templates;
+        const stepInfo = trainData.history[step];
+
+        const hubArea = window.hubArea;
+        const nodeGroup = window.nodeGroup;
+        const connectionGroup = window.connectionGroup;
+
+        // Remove old hub nodes and connections
+        nodeGroup.selectAll(".hub-node").remove();
+        nodeGroup.selectAll(".hub-label").remove();
+        connectionGroup.selectAll(".hub-connection").remove();
+
+        if (templates.length === 0) return;
+
+        // Position hubs vertically in hub area
+        const hubSpacing = Math.min(50, (hubArea.height - 40) / templates.length);
+        const startY = hubArea.y + 20;
+
+        templates.forEach((template, hubIdx) => {
+            const hubX = hubArea.x + hubArea.width / 2;
+            const hubY = startY + hubIdx * hubSpacing;
+
+            const isWinner = stepInfo.winner === hubIdx;
+
+            // Draw hub node
+            nodeGroup.append("circle")
+                .attr("class", `node hub-node ${isWinner ? 'winner' : ''}`)
+                .attr("id", `hub-${hubIdx}`)
+                .attr("cx", hubX)
+                .attr("cy", hubY)
+                .attr("r", isWinner ? 18 : 14)
+                .attr("fill", hubColors[hubIdx % 10])
+                .on("mouseenter", (event) => {
+                    const tooltip = document.getElementById('tooltip');
+                    document.getElementById('tooltip-name').textContent = `Hub ${hubIdx}`;
+
+                    // Compute pool similarities for current episode vs this hub's template
+                    const episodeVec = networkData.X[selectedEpisode];
+                    const poolSims = computePoolSimilaritiesForDisplay(episodeVec, template, networkData.pool_sizes);
+                    const vigilance = trainData.vigilance;
+
+                    // Build similarity bars HTML
+                    let simsHtml = '<div style="margin-top: 8px;">';
+                    networkData.pool_names.forEach((name, i) => {
+                        const sim = poolSims[i];
+                        const passed = sim >= vigilance;
+                        const color = passed ? '#22c55e' : '#ef4444';
+                        simsHtml += `
+                            <div style="display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: 0.75rem;">
+                                <span style="width: 50px; color: #94a3b8;">${name}</span>
+                                <div style="flex: 1; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; position: relative;">
+                                    <div style="height: 100%; width: ${sim * 100}%; background: ${color}; border-radius: 4px;"></div>
+                                    <div style="position: absolute; top: 0; bottom: 0; left: ${vigilance * 100}%; width: 2px; background: #fff;"></div>
+                                </div>
+                                <span style="width: 35px; text-align: right; color: #e2e8f0;">${sim.toFixed(2)}</span>
+                            </div>`;
+                    });
+                    simsHtml += '</div>';
+
+                    // Find episodes assigned to this hub at final state
+                    const assigned = trainData.final_assignments
+                        .filter(a => a.hub === hubIdx)
+                        .map(a => a.episode_name);
+
+                    document.getElementById('tooltip-content').innerHTML =
+                        `<div style="margin-bottom: 6px;">Final episodes: ${assigned.join(', ') || 'None'}</div>` +
+                        `<div style="font-size: 0.7rem; color: #64748b; margin-bottom: 4px;">Similarity to current episode:</div>` +
+                        simsHtml;
+
+                    const rect = event.target.getBoundingClientRect();
+                    const container = document.getElementById('viz-container').getBoundingClientRect();
+                    tooltip.style.left = (rect.right - container.left + 10) + 'px';
+                    tooltip.style.top = (rect.top - container.top) + 'px';
+                    tooltip.classList.add('visible');
+                })
+                .on("mouseleave", () => {
+                    document.getElementById('tooltip').classList.remove('visible');
+                });
+
+            // Draw hub label
+            nodeGroup.append("text")
+                .attr("class", "node-label hub-label")
+                .attr("x", hubX + 22)
+                .attr("y", hubY + 4)
+                .text(`Hub ${hubIdx}`);
+
+            // Draw connections from hub to pool nodes based on template weights
+            if (isWinner) {
+                let featureIdx = 0;
+                networkData.pool_names.forEach((poolName, poolIdx) => {
+                    const poolFeatures = networkData.features[poolName];
+                    poolFeatures.forEach((feature, fi) => {
+                        const weight = template[featureIdx];
+                        if (weight > 0.1) {
+                            const nodeKey = `pool-${poolName}-${feature}`;
+                            const nodePos = window.nodePositions[nodeKey];
+
+                            connectionGroup.append("path")
+                                .attr("class", "connection hub-connection positive highlighted")
+                                .attr("d", `M${hubX},${hubY} Q${(hubX + nodePos.x) / 2},${(hubY + nodePos.y) / 2} ${nodePos.x},${nodePos.y}`)
+                                .attr("stroke-width", weight * 4)
+                                .attr("stroke-opacity", 0.6 + weight * 0.4);
+                        }
+                        featureIdx++;
+                    });
+                });
+            }
+        });
+    }
+
+    function updateHubList() {
+        if (!trainData) return;
+
+        const container = document.getElementById('hubList');
+        const assignments = trainData.final_assignments;
+
+        // Group episodes by hub
+        const hubGroups = {};
+        assignments.forEach(a => {
+            if (a.hub !== null) {
+                if (!hubGroups[a.hub]) hubGroups[a.hub] = [];
+                hubGroups[a.hub].push(a.episode_name);
+            }
+        });
+
+        container.innerHTML = Object.entries(hubGroups).map(([hub, episodes]) =>
+            `<div class="hub-item">
+                <span class="hub-id" style="color: ${hubColors[hub % 10]}">Hub ${hub}</span>
+                <span class="members">${episodes.join(', ')}</span>
+            </div>`
+        ).join('');
+    }
+
+    function playbackStep(delta) {
+        updateStep(currentStep + delta);
+    }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+
+        if (isPlaying) {
+            btn.textContent = 'Pause';
+            playInterval = setInterval(() => {
+                if (currentStep >= trainData.history.length - 1) {
+                    currentStep = 0;
+                }
+                updateStep(currentStep + 1);
+            }, 300);
+        } else {
+            btn.textContent = 'Play';
+            clearInterval(playInterval);
+        }
+    }
+
+    function updateStatus(type, message) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = message;
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        if (networkData) {
+            renderNetwork();
+            if (trainData) {
+                updateStep(currentStep);
+            }
+        }
+    });
+
+    // Initialize on load
+    init();
+</script>
+
+</body>
+</html>

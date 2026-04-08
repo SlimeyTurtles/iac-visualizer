@@ -113,7 +113,59 @@ app.post('/rumelhart-train', (req, res) => {
     });
 });
 
+// Unsupervised model endpoints
+app.get('/unsupervised-info', (req, res) => {
+    const python = spawn('python3', ['unsupervised_bridge.py', 'info']);
+
+    let dataString = '';
+    let errorString = '';
+
+    python.stdout.on('data', (data) => dataString += data.toString());
+    python.stderr.on('data', (data) => errorString += data.toString());
+
+    python.on('close', (code) => {
+        if (code !== 0) {
+            console.error('Python error:', errorString);
+            return res.status(500).json({ error: errorString });
+        }
+        try {
+            res.json(JSON.parse(dataString));
+        } catch (e) {
+            res.status(500).json({ error: 'Failed to parse response', raw: dataString });
+        }
+    });
+});
+
+app.post('/unsupervised-train', (req, res) => {
+    const { params } = req.body;
+
+    const python = spawn('python3', [
+        'unsupervised_bridge.py',
+        'train',
+        JSON.stringify(params)
+    ]);
+
+    let dataString = '';
+    let errorString = '';
+
+    python.stdout.on('data', (data) => dataString += data.toString());
+    python.stderr.on('data', (data) => errorString += data.toString());
+
+    python.on('close', (code) => {
+        if (code !== 0) {
+            console.error('Python error:', errorString);
+            return res.status(500).json({ error: errorString });
+        }
+        try {
+            res.json(JSON.parse(dataString));
+        } catch (e) {
+            res.status(500).json({ error: 'Failed to parse response', raw: dataString });
+        }
+    });
+});
+
 app.listen(port, () => {
     console.log(`IAC Visualizer running at http://localhost:${port}`);
     console.log(`Rumelhart Visualizer at http://localhost:${port}/rumelhart.html`);
+    console.log(`Unsupervised Visualizer at http://localhost:${port}/unsupervised.html`);
 });
