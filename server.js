@@ -165,7 +165,11 @@ app.post('/unsupervised-train', (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`IAC Visualizer running at http://localhost:${port}`);
-    console.log(`Rumelhart Visualizer at http://localhost:${port}/rumelhart.html`);
-    console.log(`Unsupervised Visualizer at http://localhost:${port}/unsupervised.html`);
+    console.log(`\nIAC Network Models running at http://localhost:${port}`);
+    console.log(`\nAvailable models:`);
+    console.log(`  - Home:              http://localhost:${port}/`);
+    console.log(`  - IAC Visualizer:    http://localhost:${port}/iac.html`);
+    console.log(`  - Rumelhart:         http://localhost:${port}/rumelhart.html`);
+    console.log(`  - Unsupervised:      http://localhost:${port}/unsupervised.html`);
+    console.log(`  - Unsupervised CSV:  http://localhost:${port}/unsupervised_csv.html\n`);
 });

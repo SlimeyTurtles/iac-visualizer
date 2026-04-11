@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unsupervised Concept Model Visualizer</title>
+    <title>Unsupervised Concept Model - CSV Input</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         * {
@@ -89,7 +89,26 @@
             box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
         }
 
-        #trainBtn {
+        .param-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #f1f5f9;
+            font-size: 0.8rem;
+            font-family: monospace;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .param-group textarea:focus {
+            outline: none;
+            border-color: #f59e0b;
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+        }
+
+        .btn-primary {
             width: 100%;
             padding: 14px;
             background: linear-gradient(135deg, #f59e0b, #d97706);
@@ -102,15 +121,33 @@
             transition: all 0.2s;
         }
 
-        #trainBtn:hover {
+        .btn-primary:hover {
             background: linear-gradient(135deg, #d97706, #b45309);
             transform: translateY(-1px);
         }
 
-        #trainBtn:disabled {
+        .btn-primary:disabled {
             background: #374151;
             cursor: not-allowed;
             transform: none;
+        }
+
+        .btn-secondary {
+            width: 100%;
+            padding: 10px;
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-weight: 500;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: #475569;
+            border-color: #f59e0b;
         }
 
         .scrubber-section {
@@ -265,6 +302,42 @@
             border: 1px solid #1f2937;
         }
 
+        .pca-chart-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 220px;
+            background: #111827;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            z-index: 100;
+        }
+
+        .pca-chart-container h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        #pca-chart {
+            width: 100%;
+            height: 180px;
+        }
+
+        .pca-dot {
+            transition: r 0.15s;
+        }
+
+        .pca-dot:hover {
+            cursor: pointer;
+        }
+
+        .pca-dot.current {
+            stroke: #fff;
+            stroke-width: 2px;
+        }
+
         .legend h4 {
             margin: 0 0 12px 0;
             font-size: 0.85rem;
@@ -341,6 +414,9 @@
             width: 60px;
             font-size: 0.75rem;
             color: #94a3b8;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .pool-similarity-bar .bar {
@@ -377,6 +453,8 @@
             background: #1e293b;
             padding: 12px;
             border-radius: 6px;
+            max-height: 150px;
+            overflow-y: auto;
         }
 
         .episode-list h4 {
@@ -449,6 +527,10 @@
             color: #22c55e;
         }
 
+        .status.error {
+            color: #ef4444;
+        }
+
         .tooltip {
             position: absolute;
             background: #1e293b;
@@ -460,6 +542,7 @@
             transition: opacity 0.15s;
             z-index: 1000;
             min-width: 180px;
+            max-width: 350px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
 
@@ -517,6 +600,34 @@
             grid-template-columns: 1fr 1fr;
             gap: 12px;
         }
+
+        .csv-info {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 8px;
+            padding: 8px;
+            background: #0f172a;
+            border-radius: 4px;
+        }
+
+        .csv-info strong {
+            color: #94a3b8;
+        }
+
+        .data-loaded {
+            background: #064e3b;
+            border: 1px solid #10b981;
+            color: #6ee7b7;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+        }
+
+        .feature-scroll {
+            max-height: 400px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -526,9 +637,32 @@
         <a href="/" class="nav-link">&larr; Home</a>
         <a href="/iac.html" class="nav-link">IAC</a>
         <a href="/rumelhart.html" class="nav-link">Rumelhart</a>
-        <a href="/unsupervised_csv.html" class="nav-link">CSV Input &rarr;</a>
+        <a href="/unsupervised.html" class="nav-link">Default &rarr;</a>
     </div>
-    <h2>Unsupervised Concepts</h2>
+    <h2>CSV Input Mode</h2>
+
+    <div class="section-header">CSV Data</div>
+
+    <div class="param-group">
+        <label style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Paste CSV Data</span>
+            <button onclick="loadDefaultData()" style="padding: 4px 8px; font-size: 0.75rem; background: #334155; border: 1px solid #475569; border-radius: 4px; color: #e2e8f0; cursor: pointer;">Load Example</button>
+        </label>
+        <textarea id="csvInput" placeholder="Name,feature1,feature2,...
+item1,1,0,...
+item2,0,1,..."></textarea>
+        <div class="csv-info">
+            <strong>Supports two formats:</strong><br>
+            1. Categorical: Name,Col1,Col2,... with text (auto Gaussian)<br>
+            2. Numeric: Name,Pool:feat1,Pool:feat2,... with 0-1 values (you control distribution)
+        </div>
+    </div>
+
+    <button class="btn-secondary" onclick="loadCSV()">Load CSV Data</button>
+
+    <div id="dataLoaded" class="data-loaded" style="display: none;">
+        <span id="dataInfo"></span>
+    </div>
 
     <div class="section-header">Hyperparameters</div>
 
@@ -558,7 +692,7 @@
 
     <div class="section-header">Training</div>
 
-    <button id="trainBtn" onclick="runTraining()">TRAIN MODEL</button>
+    <button id="trainBtn" class="btn-primary" onclick="runTraining()" disabled>TRAIN MODEL</button>
 
     <div class="scrubber-section" id="scrubberSection" style="display: none;">
         <label>
@@ -579,7 +713,7 @@
 
     <div class="episode-list">
         <h4>Select Episode</h4>
-        <div id="episodeButtons">Loading...</div>
+        <div id="episodeButtons">Load CSV data first</div>
     </div>
 
     <div class="hub-list" id="hubListSection" style="display: none;">
@@ -587,7 +721,7 @@
         <div id="hubList"></div>
     </div>
 
-    <div id="status" class="status">Loading data...</div>
+    <div id="status" class="status">Paste CSV data and click Load</div>
 </div>
 
 <div id="main-container">
@@ -607,44 +741,41 @@
                 <span>1.0</span>
             </div>
         </div>
+        <div class="pca-chart-container" id="pcaChartContainer" style="display: none;">
+            <h4>Episode Similarity (PCA)</h4>
+            <svg id="pca-chart"></svg>
+        </div>
         <div class="info-card" id="infoCard">
             <h4>Step Information</h4>
-            <div id="stepInfo">Train the model to see step details</div>
+            <div id="stepInfo">Load CSV data and train the model to see step details</div>
             <div id="poolSimilarities" style="margin-top: 12px;"></div>
         </div>
     </div>
 </div>
 
 <script>
-    // Default dataset (will be populated from unsupervised_data.py structure)
-    const DEFAULT_DATA = {
-        pool_sizes: [4, 4, 3, 3],
-        pool_names: ["Color", "Shape", "Size", "Texture"],
-        features: {
-            "Color": ["red", "green", "blue", "yellow"],
-            "Shape": ["circle", "square", "triangle", "star"],
-            "Size": ["small", "medium", "large"],
-            "Texture": ["smooth", "rough", "bumpy"]
-        },
-        episodes: [
-            {name: "apple1", Color: "red", Shape: "circle", Size: "small", Texture: "smooth"},
-            {name: "apple2", Color: "red", Shape: "circle", Size: "medium", Texture: "smooth"},
-            {name: "apple3", Color: "green", Shape: "circle", Size: "small", Texture: "smooth"},
-            {name: "orange1", Color: "yellow", Shape: "circle", Size: "medium", Texture: "bumpy"},
-            {name: "orange2", Color: "yellow", Shape: "circle", Size: "small", Texture: "bumpy"},
-            {name: "block1", Color: "red", Shape: "square", Size: "large", Texture: "smooth"},
-            {name: "block2", Color: "blue", Shape: "square", Size: "medium", Texture: "smooth"},
-            {name: "block3", Color: "yellow", Shape: "square", Size: "small", Texture: "smooth"},
-            {name: "block4", Color: "green", Shape: "square", Size: "large", Texture: "smooth"},
-            {name: "rock1", Color: "blue", Shape: "triangle", Size: "small", Texture: "rough"},
-            {name: "rock2", Color: "blue", Shape: "triangle", Size: "medium", Texture: "rough"},
-            {name: "rock3", Color: "green", Shape: "triangle", Size: "large", Texture: "rough"},
-            {name: "star1", Color: "yellow", Shape: "star", Size: "small", Texture: "smooth"},
-            {name: "star2", Color: "yellow", Shape: "star", Size: "large", Texture: "smooth"},
-            {name: "gem1", Color: "blue", Shape: "star", Size: "small", Texture: "smooth"},
-            {name: "ball1", Color: "green", Shape: "circle", Size: "large", Texture: "rough"}
-        ]
-    };
+    // Default CSV data (fruits, blocks, rocks, stars, etc.)
+    const DEFAULT_CSV = `Name,Color:1 red,Color:2 orange,Color:3 yellow,Color:4 green,Color:5 blue,Color:6 purple,Shape:1 circle,Shape:2 oval,Shape:3 square,Shape:4 triangle,Shape:5 star,Size:1 small,Size:2 sm-med,Size:3 medium,Size:4 med-lg,Size:5 large,Texture:1 smooth,Texture:2 sm-bumpy,Texture:3 bumpy,Texture:4 bmp-rough,Texture:5 rough
+apple1,1.0,0.7,0.25,0.04,0.04,0.25,1.0,0.7,0.0,0.0,0.0,0.7,1.0,0.7,0.25,0.04,1.0,0.7,0.25,0.04,0.0
+apple2,1.0,0.7,0.25,0.04,0.04,0.25,1.0,0.7,0.0,0.0,0.0,0.25,0.7,1.0,0.7,0.25,1.0,0.7,0.25,0.04,0.0
+apple3,0.04,0.04,0.25,1.0,0.7,0.25,1.0,0.7,0.0,0.0,0.0,0.7,1.0,0.7,0.25,0.04,1.0,0.7,0.25,0.04,0.0
+orange1,0.7,1.0,0.7,0.25,0.04,0.04,1.0,0.7,0.0,0.0,0.0,0.25,0.7,1.0,0.7,0.25,0.25,0.7,1.0,0.7,0.25
+orange2,0.7,1.0,0.7,0.25,0.04,0.04,1.0,0.7,0.0,0.0,0.0,0.7,1.0,0.7,0.25,0.04,0.25,0.7,1.0,0.7,0.25
+banana1,0.25,0.7,1.0,0.7,0.25,0.04,0.7,1.0,0.0,0.0,0.0,0.04,0.25,0.7,1.0,0.7,1.0,0.7,0.25,0.04,0.0
+grape1,0.25,0.04,0.04,0.25,0.7,1.0,1.0,0.7,0.0,0.0,0.0,1.0,0.7,0.25,0.04,0.0,1.0,0.7,0.25,0.04,0.0
+grape2,0.25,0.04,0.04,0.25,0.7,1.0,1.0,0.7,0.0,0.0,0.0,1.0,0.7,0.25,0.04,0.0,1.0,0.7,0.25,0.04,0.0
+blueberry,0.04,0.04,0.25,0.7,1.0,0.7,1.0,0.7,0.0,0.0,0.0,1.0,0.7,0.25,0.04,0.0,1.0,0.7,0.25,0.04,0.0
+block1,1.0,0.7,0.25,0.04,0.04,0.25,0.0,0.0,1.0,0.0,0.0,0.04,0.25,0.7,1.0,0.7,1.0,0.7,0.25,0.04,0.0
+block2,0.04,0.04,0.25,0.7,1.0,0.7,0.0,0.0,1.0,0.0,0.0,0.25,0.7,1.0,0.7,0.25,1.0,0.7,0.25,0.04,0.0
+block3,0.25,0.7,1.0,0.7,0.25,0.04,0.0,0.0,1.0,0.0,0.0,0.7,1.0,0.7,0.25,0.04,1.0,0.7,0.25,0.04,0.0
+rock1,0.04,0.04,0.25,0.7,1.0,0.7,0.0,0.0,0.0,1.0,0.0,0.7,1.0,0.7,0.25,0.04,0.04,0.25,0.7,1.0,0.7
+rock2,0.04,0.04,0.25,1.0,0.7,0.25,0.0,0.0,0.0,1.0,0.0,0.25,0.7,1.0,0.7,0.25,0.04,0.25,0.7,1.0,0.7
+rock3,0.04,0.04,0.25,1.0,0.7,0.25,0.0,0.0,0.0,1.0,0.0,0.04,0.25,0.7,1.0,0.7,0.0,0.04,0.25,0.7,1.0
+star1,0.25,0.7,1.0,0.7,0.25,0.04,0.0,0.0,0.0,0.0,1.0,0.7,1.0,0.7,0.25,0.04,1.0,0.7,0.25,0.04,0.0
+star2,0.25,0.7,1.0,0.7,0.25,0.04,0.0,0.0,0.0,0.0,1.0,0.04,0.25,0.7,1.0,0.7,1.0,0.7,0.25,0.04,0.0
+gem1,0.04,0.04,0.25,0.7,1.0,0.7,0.0,0.0,0.0,0.0,1.0,1.0,0.7,0.25,0.04,0.0,1.0,0.7,0.25,0.04,0.0
+gem2,0.25,0.04,0.04,0.25,0.7,1.0,0.0,0.0,0.0,0.0,1.0,0.7,1.0,0.7,0.25,0.04,1.0,0.7,0.25,0.04,0.0
+ball1,0.04,0.04,0.25,1.0,0.7,0.25,1.0,0.7,0.0,0.0,0.0,0.04,0.25,0.7,1.0,0.7,0.04,0.25,0.7,1.0,0.7`;
 
     // State
     let networkData = null;
@@ -653,6 +784,7 @@
     let currentStep = 0;
     let isPlaying = false;
     let playInterval = null;
+    let pcaProjection = null; // Cached PCA projection of all episodes
 
     // D3 elements
     const svg = d3.select("#canvas");
@@ -670,12 +802,12 @@
     function init() {
         setupZoom();
         setupLegendGradient();
-        loadData();
+        loadDefaultData();
     }
 
     function setupZoom() {
         zoomBehavior = d3.zoom()
-            .scaleExtent([0.3, 3])
+            .scaleExtent([0.1, 3])
             .on("zoom", (event) => {
                 g.attr("transform", event.transform);
             });
@@ -695,38 +827,221 @@
         gradient.style.background = `linear-gradient(to right, ${activationColor(0)}, ${activationColor(0.5)}, ${activationColor(1)})`;
     }
 
-    function loadData() {
-        networkData = DEFAULT_DATA;
-        networkData.X = episodesToVectors(networkData.episodes, networkData.features, networkData.pool_sizes);
+    function parseCSV(csvText) {
+        const lines = csvText.trim().split('\n');
+        if (lines.length < 2) {
+            throw new Error('CSV must have at least a header row and one data row');
+        }
 
-        renderNetwork();
-        updateEpisodeButtons();
-        updateStatus('ready', `Loaded ${networkData.episodes.length} episodes, ${sum(networkData.pool_sizes)} features`);
+        // Parse header
+        const header = lines[0].split(',').map(s => s.trim());
+        if (header[0].toLowerCase() !== 'name') {
+            throw new Error('First column must be "Name"');
+        }
+
+        const columnNames = header.slice(1);
+        const rawData = [];
+
+        // Parse data rows
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            const parts = line.split(',').map(s => s.trim());
+            const name = parts[0];
+            const values = parts.slice(1);
+
+            rawData.push({ name, values });
+        }
+
+        // Detect if data is categorical or numeric
+        // Check if values are numeric (any number) or text
+        const isCategorical = columnNames.map((_, colIdx) => {
+            for (const row of rawData) {
+                const val = row.values[colIdx];
+                if (val && val !== '') {
+                    const num = parseFloat(val);
+                    // If it's not a valid number, treat as categorical
+                    if (isNaN(num)) {
+                        return true;
+                    }
+                    return false;
+                }
+            }
+            return false;
+        });
+
+        const hasCategorical = isCategorical.some(x => x);
+
+        if (hasCategorical) {
+            // Gaussian-distributed encoding for categorical data
+            // Each column becomes a pool, each unique value becomes a feature
+            // Values get Gaussian activation based on distance from the target value
+            const pool_names = [];
+            const pool_sizes = [];
+            const features = {};
+            const featureNames = [];
+            const sigma = 1.0; // Controls spread of Gaussian
+
+            // First, collect unique values for each categorical column
+            const columnValues = columnNames.map((colName, colIdx) => {
+                const uniqueValues = [...new Set(rawData.map(row => row.values[colIdx]).filter(v => v && v !== ''))];
+                return uniqueValues.sort();
+            });
+
+            // Build pools from columns
+            columnNames.forEach((colName, colIdx) => {
+                const values = columnValues[colIdx];
+                pool_names.push(colName);
+                pool_sizes.push(values.length);
+                features[colName] = values;
+                values.forEach(v => featureNames.push(`${colName}:${v}`));
+            });
+
+            // Build Gaussian-distributed vectors
+            const episodes = [];
+            const X = [];
+
+            rawData.forEach(row => {
+                episodes.push({ name: row.name });
+                const vec = [];
+
+                columnNames.forEach((colName, colIdx) => {
+                    const values = columnValues[colIdx];
+                    const rowValue = row.values[colIdx];
+                    const centerIdx = values.indexOf(rowValue);
+
+                    // Gaussian activation: exp(-d^2 / (2 * sigma^2))
+                    values.forEach((v, idx) => {
+                        if (centerIdx === -1) {
+                            vec.push(0);
+                        } else {
+                            const distance = Math.abs(idx - centerIdx);
+                            const activation = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+                            vec.push(activation);
+                        }
+                    });
+                });
+
+                X.push(vec);
+            });
+
+            return {
+                pool_sizes,
+                pool_names,
+                features,
+                episodes,
+                X,
+                featureNames,
+                isCategorical: true
+            };
+        } else {
+            // Numeric data - use as-is
+            const episodes = [];
+            const X = [];
+
+            rawData.forEach(row => {
+                episodes.push({ name: row.name });
+                const values = row.values.map(v => parseFloat(v) || 0);
+                // Pad or trim to match feature count
+                while (values.length < columnNames.length) values.push(0);
+                if (values.length > columnNames.length) values.length = columnNames.length;
+                X.push(values);
+            });
+
+            // Check if column names use Pool:Feature format (e.g., "Color:red", "Color:green")
+            const hasPoolFormat = columnNames.some(name => name.includes(':'));
+
+            let pool_sizes = [];
+            let pool_names = [];
+            let features = {};
+            let featureNames = [];
+
+            if (hasPoolFormat) {
+                // Group by pool prefix, maintaining order
+                const poolOrder = [];
+                const poolMap = {};
+                columnNames.forEach(colName => {
+                    const colonIdx = colName.indexOf(':');
+                    const poolName = colonIdx > 0 ? colName.substring(0, colonIdx) : 'Features';
+                    const featureName = colonIdx > 0 ? colName.substring(colonIdx + 1) : colName;
+
+                    if (!poolMap[poolName]) {
+                        poolMap[poolName] = [];
+                        poolOrder.push(poolName);
+                    }
+                    poolMap[poolName].push(featureName);
+                    featureNames.push(colName);
+                });
+
+                poolOrder.forEach(poolName => {
+                    const poolFeatures = poolMap[poolName];
+                    pool_names.push(poolName);
+                    pool_sizes.push(poolFeatures.length);
+                    features[poolName] = poolFeatures;
+                });
+            } else {
+                // Group features into pools of reasonable size for visualization
+                const poolSize = 20;
+                const numPools = Math.ceil(columnNames.length / poolSize);
+
+                for (let p = 0; p < numPools; p++) {
+                    const start = p * poolSize;
+                    const end = Math.min(start + poolSize, columnNames.length);
+                    const poolFeatures = columnNames.slice(start, end);
+
+                    pool_sizes.push(poolFeatures.length);
+                    const poolName = `Pool ${p + 1}`;
+                    pool_names.push(poolName);
+                    features[poolName] = poolFeatures;
+                }
+                featureNames = columnNames;
+            }
+
+            return {
+                pool_sizes,
+                pool_names,
+                features,
+                episodes,
+                X,
+                featureNames,
+                isCategorical: false
+            };
+        }
     }
 
-    function episodesToVectors(episodes, features, pool_sizes, sigma = 1.0) {
-        // Convert episodes to vectors with Gaussian activation
-        // Instead of one-hot, features get partial activation based on
-        // distance from the center feature (Gaussian distribution)
-        const pool_names = Object.keys(features);
-        return episodes.map(ep => {
-            const vec = [];
-            pool_names.forEach((pool, i) => {
-                const pool_features = features[pool];
-                const pool_vec = new Array(pool_sizes[i]).fill(0);
-                if (ep[pool] && pool_features.includes(ep[pool])) {
-                    const centerIdx = pool_features.indexOf(ep[pool]);
-                    // Apply Gaussian activation to all features in the pool
-                    for (let j = 0; j < pool_features.length; j++) {
-                        const distance = Math.abs(j - centerIdx);
-                        // Gaussian: exp(-d^2 / (2 * sigma^2))
-                        pool_vec[j] = Math.exp(-(distance * distance) / (2 * sigma * sigma));
-                    }
-                }
-                vec.push(...pool_vec);
-            });
-            return vec;
-        });
+    function loadDefaultData() {
+        document.getElementById('csvInput').value = DEFAULT_CSV;
+        loadCSV();
+    }
+
+    function loadCSV() {
+        const csvText = document.getElementById('csvInput').value;
+        if (!csvText.trim()) {
+            updateStatus('error', 'Please paste CSV data first');
+            return;
+        }
+
+        try {
+            networkData = parseCSV(csvText);
+
+            // Show data info
+            document.getElementById('dataLoaded').style.display = 'block';
+            const formatType = networkData.isCategorical ? '(categorical, Gaussian encoded)' : '(numeric)';
+            document.getElementById('dataInfo').textContent =
+                `Loaded ${networkData.episodes.length} items, ${networkData.pool_names.length} pools, ${networkData.featureNames.length} features ${formatType}`;
+
+            // Enable training
+            document.getElementById('trainBtn').disabled = false;
+
+            renderNetwork();
+            updateEpisodeButtons();
+            updateStatus('ready', `Ready - ${networkData.episodes.length} items, ${networkData.featureNames.length} features`);
+
+        } catch (e) {
+            console.error('CSV parse error:', e);
+            updateStatus('error', 'CSV Error: ' + e.message);
+        }
     }
 
     function sum(arr) {
@@ -761,7 +1076,7 @@
     function updateEpisodeButtons() {
         const container = document.getElementById('episodeButtons');
         if (!networkData) {
-            container.innerHTML = 'Loading...';
+            container.innerHTML = 'Load CSV data first';
             return;
         }
 
@@ -790,86 +1105,108 @@
         const pool_sizes = networkData.pool_sizes;
         const features = networkData.features;
 
-        // Layout: pools on left, hubs in middle, current episode on right
-        const poolWidth = 120;
-        const hubWidth = 150;
-        const spacing = 100;
+        // Layout: pools as vertical columns arranged horizontally
+        // Hubs in a horizontal row BELOW the feature columns
+        const poolWidth = 130; // Wider to fit circle + text
+        const poolSpacing = 25; // Spacing between pool columns
+        const nodeSpacing = 30; // Spacing between feature nodes
+        const nodeRadius = 9;
+        const boxPadding = 20; // Equal padding top and bottom inside box
+        const circleLeftOffset = 25; // Circle position from left edge of pool
 
-        const startX = 80;
+        const startX = 50;
+        const startY = 60;
+
+        // Calculate max pool height based on largest pool
+        const maxPoolSize = Math.max(...pool_sizes);
+        // Pool box height = padding top + nodes area + padding bottom
+        const maxPoolHeight = boxPadding + (maxPoolSize - 1) * nodeSpacing + boxPadding;
+
+        // Calculate total width needed for all pools
+        const totalPoolsWidth = pool_names.length * poolWidth + (pool_names.length - 1) * poolSpacing;
 
         // Calculate positions
         const poolPositions = {};
         const nodePositions = {};
-        let currentY = 60;
 
-        // Draw pools vertically stacked
+        // Draw pools as vertical columns side by side
         pool_names.forEach((poolName, poolIdx) => {
             const poolFeatures = features[poolName];
             const poolSize = pool_sizes[poolIdx];
-            const poolHeight = poolSize * 35 + 30;
+            // All pools have same height for alignment
+            const poolHeight = maxPoolHeight;
+            const poolX = startX + poolIdx * (poolWidth + poolSpacing);
 
             poolPositions[poolName] = {
-                x: startX,
-                y: currentY,
+                x: poolX,
+                y: startY,
                 width: poolWidth,
                 height: poolHeight
             };
 
-            // Position nodes in this pool
+            // Center nodes vertically within the pool box with equal padding
+            const totalNodesHeight = (poolSize - 1) * nodeSpacing;
+            // First node starts at: box top + padding + center offset for smaller pools
+            const nodeStartY = startY + boxPadding + (maxPoolHeight - 2 * boxPadding - totalNodesHeight) / 2;
+
+            // Position nodes: circle on left side, leaving room for text on right
             poolFeatures.forEach((feature, featureIdx) => {
                 const globalIdx = sum(pool_sizes.slice(0, poolIdx)) + featureIdx;
-                nodePositions[`pool-${poolName}-${feature}`] = {
-                    x: startX + poolWidth / 2,
-                    y: currentY + 5 + featureIdx * 35,
+                nodePositions[`pool-${poolName}-${featureIdx}`] = {
+                    x: poolX + circleLeftOffset,
+                    y: nodeStartY + featureIdx * nodeSpacing,
                     pool: poolName,
                     feature: feature,
-                    globalIdx: globalIdx
+                    featureIdx: featureIdx,
+                    globalIdx: globalIdx,
+                    poolWidth: poolWidth
                 };
             });
-
-            currentY += poolHeight + 45;
         });
 
-        // Hub area (will be populated during training)
-        const hubAreaX = startX + poolWidth + spacing;
-        const hubAreaY = 60;
-        const hubAreaWidth = hubWidth;
-        const hubAreaHeight = currentY - 80;
+        // Hub area: horizontal row BELOW all pools, CENTERED relative to pools
+        const hubAreaY = startY + maxPoolHeight + 50;
+        const hubAreaWidth = Math.max(totalPoolsWidth, 300);
+        // Center the hub area under the pools
+        const hubAreaX = startX + (totalPoolsWidth - hubAreaWidth) / 2;
+        const hubAreaHeight = 80; // Will grow dynamically when hubs are rendered
 
-        // Draw pool backgrounds
+        // Draw pool backgrounds - sized to contain circle + text
         g.selectAll(".layer-bg.pool")
             .data(pool_names)
             .enter()
             .append("rect")
             .attr("class", "layer-bg pool")
-            .attr("x", d => poolPositions[d].x - 10)
-            .attr("y", d => poolPositions[d].y - 30)
-            .attr("width", d => poolPositions[d].width + 20)
+            .attr("x", d => poolPositions[d].x)
+            .attr("y", d => poolPositions[d].y)
+            .attr("width", d => poolPositions[d].width)
             .attr("height", d => poolPositions[d].height);
 
-        // Draw pool labels
+        // Draw pool labels at top of each column
         g.selectAll(".layer-label.pool")
             .data(pool_names)
             .enter()
             .append("text")
             .attr("class", "layer-label pool")
             .attr("x", d => poolPositions[d].x + poolPositions[d].width / 2)
-            .attr("y", d => poolPositions[d].y - 40)
+            .attr("y", d => poolPositions[d].y - 20)
             .attr("text-anchor", "middle")
-            .text(d => d);
+            .text(d => d.length > 10 ? d.slice(0, 10) + '…' : d);
 
-        // Draw hub area background
+        // Draw hub area background (will be redrawn dynamically)
         g.append("rect")
             .attr("class", "layer-bg hub")
-            .attr("x", hubAreaX - 10)
-            .attr("y", hubAreaY - 30)
-            .attr("width", hubAreaWidth + 20)
+            .attr("id", "hub-area-bg")
+            .attr("x", hubAreaX)
+            .attr("y", hubAreaY - 10)
+            .attr("width", hubAreaWidth)
             .attr("height", hubAreaHeight);
 
         g.append("text")
             .attr("class", "layer-label")
+            .attr("id", "hub-label")
             .attr("x", hubAreaX + hubAreaWidth / 2)
-            .attr("y", hubAreaY - 40)
+            .attr("y", hubAreaY + hubAreaHeight + 20)
             .attr("text-anchor", "middle")
             .text("HUBS");
 
@@ -890,25 +1227,44 @@
             .attr("id", d => `node-${d.key}`)
             .attr("cx", d => d.x)
             .attr("cy", d => d.y)
-            .attr("r", 12)
+            .attr("r", nodeRadius)
             .attr("fill", "#4b5563")
             .on("mouseenter", (event, d) => handleNodeHover(event, d, true))
             .on("mouseleave", (event, d) => handleNodeHover(event, d, false));
 
-        // Draw pool node labels
+        // Draw pool node labels to the right of nodes, truncated to fit
+        const maxTextWidth = poolWidth - circleLeftOffset - nodeRadius - 10;
+        const maxChars = Math.floor(maxTextWidth / 6); // Approximate chars that fit
+
         nodeGroup.selectAll(".node-label.pool")
             .data(allPoolNodes)
             .enter()
             .append("text")
             .attr("class", "node-label pool")
-            .attr("x", d => d.x + 18)
+            .attr("x", d => d.x + nodeRadius + 5)
             .attr("y", d => d.y + 4)
-            .text(d => d.feature);
+            .text(d => {
+                const text = d.feature;
+                if (text.length > maxChars) {
+                    return text.slice(0, maxChars - 1) + '…';
+                }
+                return text;
+            })
+            .style("font-size", "10px")
+            .style("fill", "#cbd5e1");
 
         // Store positions for later
         window.nodePositions = nodePositions;
         window.poolPositions = poolPositions;
-        window.hubArea = { x: hubAreaX, y: hubAreaY, width: hubAreaWidth, height: hubAreaHeight };
+        window.hubArea = {
+            x: hubAreaX,
+            y: hubAreaY,
+            width: hubAreaWidth,
+            height: hubAreaHeight,
+            maxHeight: 200,
+            totalPoolsWidth: totalPoolsWidth,
+            poolsStartX: startX
+        };
         window.connectionGroup = connectionGroup;
         window.nodeGroup = nodeGroup;
     }
@@ -939,6 +1295,227 @@
         }
     }
 
+    // Simple PCA implementation for 2D projection
+    function computePCA(data) {
+        if (!data || data.length < 2) return null;
+
+        const n = data.length;
+        const d = data[0].length;
+
+        // Center the data
+        const mean = new Array(d).fill(0);
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < d; j++) {
+                mean[j] += data[i][j];
+            }
+        }
+        for (let j = 0; j < d; j++) {
+            mean[j] /= n;
+        }
+
+        const centered = data.map(row => row.map((v, j) => v - mean[j]));
+
+        // Compute covariance matrix (simplified: only need top 2 eigenvectors)
+        // Using power iteration for simplicity
+        const cov = new Array(d).fill(null).map(() => new Array(d).fill(0));
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < d; j++) {
+                for (let k = 0; k < d; k++) {
+                    cov[j][k] += centered[i][j] * centered[i][k];
+                }
+            }
+        }
+        for (let j = 0; j < d; j++) {
+            for (let k = 0; k < d; k++) {
+                cov[j][k] /= n;
+            }
+        }
+
+        // Power iteration for first eigenvector
+        let v1 = new Array(d).fill(0).map(() => Math.random() - 0.5);
+        for (let iter = 0; iter < 50; iter++) {
+            const newV = new Array(d).fill(0);
+            for (let j = 0; j < d; j++) {
+                for (let k = 0; k < d; k++) {
+                    newV[j] += cov[j][k] * v1[k];
+                }
+            }
+            const norm = Math.sqrt(newV.reduce((s, v) => s + v * v, 0)) + 1e-8;
+            v1 = newV.map(v => v / norm);
+        }
+
+        // Deflate covariance matrix
+        const lambda1 = v1.reduce((s, vi, i) => {
+            let sum = 0;
+            for (let k = 0; k < d; k++) {
+                sum += cov[i][k] * v1[k];
+            }
+            return s + vi * sum;
+        }, 0);
+
+        const covDeflated = cov.map((row, i) =>
+            row.map((val, j) => val - lambda1 * v1[i] * v1[j])
+        );
+
+        // Power iteration for second eigenvector
+        let v2 = new Array(d).fill(0).map(() => Math.random() - 0.5);
+        for (let iter = 0; iter < 50; iter++) {
+            const newV = new Array(d).fill(0);
+            for (let j = 0; j < d; j++) {
+                for (let k = 0; k < d; k++) {
+                    newV[j] += covDeflated[j][k] * v2[k];
+                }
+            }
+            const norm = Math.sqrt(newV.reduce((s, v) => s + v * v, 0)) + 1e-8;
+            v2 = newV.map(v => v / norm);
+        }
+
+        // Project all data points
+        const projections = centered.map(row => {
+            const x = row.reduce((s, v, i) => s + v * v1[i], 0);
+            const y = row.reduce((s, v, i) => s + v * v2[i], 0);
+            return [x, y];
+        });
+
+        return { projections, mean, v1, v2 };
+    }
+
+    function renderPCAChart() {
+        if (!trainData || !pcaProjection) return;
+
+        const container = document.getElementById('pcaChartContainer');
+        container.style.display = 'block';
+
+        const chartSvg = d3.select("#pca-chart");
+        const width = 188;
+        const height = 180;
+
+        chartSvg.attr("width", width).attr("height", height);
+        chartSvg.selectAll("*").remove();
+
+        const margin = { top: 10, right: 10, bottom: 25, left: 25 };
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+
+        const chartG = chartSvg.append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Get all projections
+        const allPoints = pcaProjection.projections;
+
+        // Calculate axis ranges with some padding
+        const xExtent = d3.extent(allPoints, d => d[0]);
+        const yExtent = d3.extent(allPoints, d => d[1]);
+        const xPadding = (xExtent[1] - xExtent[0]) * 0.1 || 0.5;
+        const yPadding = (yExtent[1] - yExtent[0]) * 0.1 || 0.5;
+
+        const xScale = d3.scaleLinear()
+            .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
+            .range([0, innerWidth]);
+
+        const yScale = d3.scaleLinear()
+            .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+            .range([innerHeight, 0]);
+
+        // Draw axes
+        chartG.append("g")
+            .attr("transform", `translate(0,${innerHeight})`)
+            .call(d3.axisBottom(xScale).ticks(4).tickSize(3))
+            .attr("color", "#64748b")
+            .attr("font-size", "8px");
+
+        chartG.append("g")
+            .call(d3.axisLeft(yScale).ticks(4).tickSize(3))
+            .attr("color", "#64748b")
+            .attr("font-size", "8px");
+
+        // Draw axis labels
+        chartG.append("text")
+            .attr("x", innerWidth / 2)
+            .attr("y", innerHeight + 20)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#64748b")
+            .attr("font-size", "8px")
+            .text("PC1");
+
+        chartG.append("text")
+            .attr("x", -innerHeight / 2)
+            .attr("y", -18)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#64748b")
+            .attr("font-size", "8px")
+            .attr("transform", "rotate(-90)")
+            .text("PC2");
+
+        // Determine which episodes have been seen up to current step
+        const seenEpisodes = new Set();
+        const episodeHubs = {};
+        for (let i = 0; i <= currentStep; i++) {
+            const step = trainData.history[i];
+            seenEpisodes.add(step.episode_idx);
+            episodeHubs[step.episode_idx] = step.winner;
+        }
+
+        // Draw all points (dim for unseen, colored for seen)
+        allPoints.forEach((point, idx) => {
+            const isSeen = seenEpisodes.has(idx);
+            const isCurrent = trainData.history[currentStep].episode_idx === idx;
+            const hubIdx = episodeHubs[idx];
+            const hubColor = hubIdx !== undefined ? hubColors[hubIdx % hubColors.length] : '#4b5563';
+
+            chartG.append("circle")
+                .attr("class", `pca-dot ${isCurrent ? 'current' : ''}`)
+                .attr("cx", xScale(point[0]))
+                .attr("cy", yScale(point[1]))
+                .attr("r", isCurrent ? 6 : (isSeen ? 5 : 3))
+                .attr("fill", isSeen ? hubColor : '#1f2937')
+                .attr("opacity", isSeen ? 1 : 0.3)
+                .attr("stroke", isCurrent ? '#fff' : (isSeen ? '#0f172a' : 'none'))
+                .attr("stroke-width", isCurrent ? 2 : 1)
+                .on("mouseenter", (event) => {
+                    const tooltip = document.getElementById('tooltip');
+                    const episodeName = networkData.episodes[idx].name;
+                    const hubInfo = hubIdx !== undefined ? `Hub ${hubIdx}` : 'Not yet assigned';
+                    document.getElementById('tooltip-name').textContent = episodeName;
+                    document.getElementById('tooltip-content').innerHTML =
+                        `Assigned to: ${hubInfo}<br>PC1: ${point[0].toFixed(2)}<br>PC2: ${point[1].toFixed(2)}`;
+
+                    const rect = event.target.getBoundingClientRect();
+                    const containerRect = document.getElementById('viz-container').getBoundingClientRect();
+                    tooltip.style.left = (rect.right - containerRect.left + 10) + 'px';
+                    tooltip.style.top = (rect.top - containerRect.top) + 'px';
+                    tooltip.classList.add('visible');
+                })
+                .on("mouseleave", () => {
+                    document.getElementById('tooltip').classList.remove('visible');
+                })
+                .on("click", () => {
+                    selectEpisode(idx);
+                });
+        });
+
+        // Draw legend for hub colors (if we have hubs)
+        if (trainData.num_hubs > 0) {
+            const legendG = chartSvg.append("g")
+                .attr("transform", `translate(${width - 50}, 5)`);
+
+            for (let h = 0; h < Math.min(trainData.num_hubs, 5); h++) {
+                legendG.append("circle")
+                    .attr("cx", 0)
+                    .attr("cy", h * 12)
+                    .attr("r", 4)
+                    .attr("fill", hubColors[h % hubColors.length]);
+
+                legendG.append("text")
+                    .attr("x", 8)
+                    .attr("y", h * 12 + 3)
+                    .attr("fill", "#94a3b8")
+                    .attr("font-size", "8px")
+                    .text(`H${h}`);
+            }
+        }
+    }
+
     // Client-side Unsupervised Concept Model
     class UnsupervisedModel {
         constructor(pool_sizes, vigilance, learning_rate, gain, inhibition) {
@@ -948,7 +1525,7 @@
             this.learning_rate = learning_rate;
             this.gain = gain;
             this.inhibition = inhibition;
-            this.templates = []; // Array of template vectors
+            this.templates = [];
             this.pool_slices = [];
 
             let start = 0;
@@ -1082,7 +1659,7 @@
 
     async function runTraining() {
         if (!networkData) {
-            updateStatus('error', 'Load data first');
+            updateStatus('error', 'Load CSV data first');
             return;
         }
 
@@ -1101,6 +1678,9 @@
 
         try {
             trainData = trainModelClientSide(networkData, params);
+
+            // Compute PCA projection for all episodes
+            pcaProjection = computePCA(networkData.X);
 
             // Show scrubber
             document.getElementById('scrubberSection').style.display = 'block';
@@ -1206,6 +1786,7 @@
         updateStepInfo(stepData);
         updateVisualization();
         renderHubs(step);
+        renderPCAChart();
     }
 
     function updateStepInfo(stepData) {
@@ -1262,15 +1843,21 @@
         if (!networkData) return;
 
         const episodeVec = networkData.X[selectedEpisode];
+        const nodeRadius = 9;
 
         // Update pool node colors based on episode activation
+        // Lower threshold to 0.1 so even small activations are visible
         Object.entries(window.nodePositions).forEach(([key, pos]) => {
             const activation = episodeVec[pos.globalIdx];
+            // Scale activation for visibility: blend between gray and activation color
+            const blendedColor = activation > 0.05 ?
+                d3.interpolate("#4b5563", activationColor(activation))(Math.min(1, activation * 1.5)) :
+                "#4b5563";
             d3.select(`#node-${key}`)
                 .transition()
                 .duration(50)
-                .attr("fill", activation > 0.5 ? activationColor(activation) : "#4b5563")
-                .attr("r", activation > 0.5 ? 14 : 12);
+                .attr("fill", blendedColor)
+                .attr("r", activation > 0.3 ? nodeRadius + 2 : nodeRadius);
         });
     }
 
@@ -1292,15 +1879,51 @@
 
         if (templates.length === 0) return;
 
-        // Position hubs vertically in hub area
-        const hubSpacing = Math.min(50, (hubArea.height - 40) / templates.length);
+        // Calculate dynamic hub area size based on number of hubs
+        const hubNodeRadius = 12;
+        const hubSpacing = 60; // Horizontal spacing between hubs
+        const neededWidth = templates.length * hubSpacing + 40;
+        const actualWidth = Math.min(Math.max(neededWidth, hubArea.width), 800); // Max width 800
+        const actualHeight = Math.min(80 + Math.ceil(templates.length / 10) * 50, hubArea.maxHeight || 200);
+
+        // Center the hub box under the pools
+        const poolsCenterX = hubArea.poolsStartX + hubArea.totalPoolsWidth / 2;
+        const centeredHubX = poolsCenterX - actualWidth / 2;
+
+        // Update hub area background size and position (centered)
+        d3.select("#hub-area-bg")
+            .attr("x", centeredHubX)
+            .attr("width", actualWidth)
+            .attr("height", actualHeight);
+
+        // Update hub label position to bottom, centered
+        d3.select("#hub-label")
+            .attr("x", poolsCenterX)
+            .attr("y", hubArea.y + actualHeight + 5);
+
+        // Position hubs HORIZONTALLY in a row (or multiple rows if many hubs)
+        const hubsPerRow = Math.floor(actualWidth / hubSpacing);
+        const startX = centeredHubX + 30;
         const startY = hubArea.y + 20;
 
+        // Get current episode vector for similarity calculations
+        const episodeVec = networkData.X[selectedEpisode];
+        const vigilance = trainData.vigilance;
+
         templates.forEach((template, hubIdx) => {
-            const hubX = hubArea.x + hubArea.width / 2;
-            const hubY = startY + hubIdx * hubSpacing;
+            const row = Math.floor(hubIdx / hubsPerRow);
+            const col = hubIdx % hubsPerRow;
+            const hubX = startX + col * hubSpacing;
+            const hubY = startY + row * 45;
 
             const isWinner = stepInfo.winner === hubIdx;
+
+            // Calculate overall similarity to current episode for hub coloring
+            const poolSims = computePoolSimilaritiesForDisplay(episodeVec, template, networkData.pool_sizes);
+            const avgSimilarity = poolSims.reduce((a, b) => a + b, 0) / poolSims.length;
+
+            // Color hub based on similarity (use activation color scale)
+            const hubColor = activationColor(avgSimilarity);
 
             // Draw hub node
             nodeGroup.append("circle")
@@ -1308,63 +1931,57 @@
                 .attr("id", `hub-${hubIdx}`)
                 .attr("cx", hubX)
                 .attr("cy", hubY)
-                .attr("r", isWinner ? 18 : 14)
-                .attr("fill", hubColors[hubIdx % 10])
+                .attr("r", isWinner ? 16 : hubNodeRadius)
+                .attr("fill", hubColor)
                 .on("mouseenter", (event) => {
                     const tooltip = document.getElementById('tooltip');
-                    document.getElementById('tooltip-name').textContent = `Hub ${hubIdx}`;
+                    document.getElementById('tooltip-name').textContent = `Hub ${hubIdx} (Similarity: ${(avgSimilarity * 100).toFixed(0)}%)`;
 
-                    // Build template weights display - show expected activations per pool
-                    let weightsHtml = '<div style="margin-bottom: 10px;">';
-                    let featureIdx = 0;
-                    networkData.pool_names.forEach((poolName, poolIdx) => {
-                        const poolFeatures = networkData.features[poolName];
-                        weightsHtml += `<div style="margin: 6px 0;"><span style="font-size: 0.7rem; color: #64748b;">${poolName}:</span><div style="display: flex; gap: 4px; margin-top: 2px;">`;
-                        poolFeatures.forEach((feature, fi) => {
-                            const weight = template[featureIdx + fi];
-                            const intensity = Math.min(1, weight * 1.5); // Scale for visibility
-                            const bgColor = `rgba(251, 191, 36, ${intensity})`;
-                            weightsHtml += `<span style="padding: 2px 6px; background: ${bgColor}; border-radius: 3px; font-size: 0.7rem; color: ${intensity > 0.5 ? '#1e293b' : '#e2e8f0'};">${feature}: ${weight.toFixed(2)}</span>`;
-                        });
-                        weightsHtml += '</div></div>';
-                        featureIdx += poolFeatures.length;
-                    });
-                    weightsHtml += '</div>';
-
-                    // Compute pool similarities for current episode vs this hub's template
-                    const episodeVec = networkData.X[selectedEpisode];
-                    const poolSims = computePoolSimilaritiesForDisplay(episodeVec, template, networkData.pool_sizes);
-                    const vigilance = trainData.vigilance;
-
-                    // Build similarity bars HTML
-                    let simsHtml = '<div style="margin-top: 8px;">';
-                    networkData.pool_names.forEach((name, i) => {
+                    // Build similarity bars for each pool
+                    let simsHtml = '<div style="margin-bottom: 10px;">';
+                    simsHtml += '<div style="color: #64748b; margin-bottom: 6px; font-size: 0.7rem;">Pool Similarities:</div>';
+                    networkData.pool_names.forEach((poolName, i) => {
                         const sim = poolSims[i];
                         const passed = sim >= vigilance;
-                        const color = passed ? '#22c55e' : '#ef4444';
+                        const barColor = passed ? '#22c55e' : '#ef4444';
+                        const displayName = poolName.length > 8 ? poolName.slice(0, 8) + '…' : poolName;
                         simsHtml += `
-                            <div style="display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: 0.75rem;">
-                                <span style="width: 50px; color: #94a3b8;">${name}</span>
-                                <div style="flex: 1; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; position: relative;">
-                                    <div style="height: 100%; width: ${sim * 100}%; background: ${color}; border-radius: 4px;"></div>
+                            <div style="display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: 0.7rem;">
+                                <span style="width: 55px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis;">${displayName}</span>
+                                <div style="flex: 1; height: 10px; background: #334155; border-radius: 5px; overflow: hidden; position: relative; min-width: 60px;">
+                                    <div style="height: 100%; width: ${sim * 100}%; background: ${barColor}; border-radius: 5px;"></div>
                                     <div style="position: absolute; top: 0; bottom: 0; left: ${vigilance * 100}%; width: 2px; background: #fff;"></div>
                                 </div>
-                                <span style="width: 35px; text-align: right; color: #e2e8f0;">${sim.toFixed(2)}</span>
+                                <span style="width: 30px; text-align: right; color: #e2e8f0;">${(sim * 100).toFixed(0)}%</span>
                             </div>`;
                     });
                     simsHtml += '</div>';
 
-                    // Find episodes assigned to this hub at final state
+                    // Find top activated features for this hub
+                    const featureActivations = template.map((w, i) => ({
+                        feature: networkData.featureNames[i],
+                        weight: w
+                    })).sort((a, b) => b.weight - a.weight).slice(0, 6);
+
+                    let weightsHtml = '<div style="margin-bottom: 10px; font-size: 0.7rem;">';
+                    weightsHtml += '<div style="color: #64748b; margin-bottom: 4px;">Top features:</div>';
+                    featureActivations.forEach(fa => {
+                        const intensity = Math.min(1, fa.weight * 2);
+                        const bgColor = `rgba(251, 191, 36, ${intensity})`;
+                        const label = fa.feature.length > 20 ? fa.feature.slice(0, 20) + '…' : fa.feature;
+                        weightsHtml += `<div style="padding: 2px 4px; background: ${bgColor}; border-radius: 2px; margin: 2px 0; color: ${intensity > 0.5 ? '#1e293b' : '#e2e8f0'};">${label}: ${fa.weight.toFixed(2)}</div>`;
+                    });
+                    weightsHtml += '</div>';
+
+                    // Find episodes assigned to this hub
                     const assigned = trainData.final_assignments
                         .filter(a => a.hub === hubIdx)
                         .map(a => a.episode_name);
 
                     document.getElementById('tooltip-content').innerHTML =
-                        `<div style="font-size: 0.7rem; color: #64748b; margin-bottom: 4px;">Expected weights:</div>` +
-                        weightsHtml +
-                        `<div style="font-size: 0.7rem; color: #64748b; margin-bottom: 4px;">Similarity to current episode:</div>` +
                         simsHtml +
-                        `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #334155; font-size: 0.75rem;">Final episodes: ${assigned.join(', ') || 'None'}</div>`;
+                        weightsHtml +
+                        `<div style="padding-top: 6px; border-top: 1px solid #334155; font-size: 0.7rem;">Items: ${assigned.slice(0, 5).join(', ') || 'None'}${assigned.length > 5 ? '…' : ''}</div>`;
 
                     const rect = event.target.getBoundingClientRect();
                     const container = document.getElementById('viz-container').getBoundingClientRect();
@@ -1376,32 +1993,48 @@
                     document.getElementById('tooltip').classList.remove('visible');
                 });
 
-            // Draw hub label
+            // Draw hub label below node
             nodeGroup.append("text")
                 .attr("class", "node-label hub-label")
-                .attr("x", hubX + 22)
-                .attr("y", hubY + 4)
-                .text(`Hub ${hubIdx}`);
+                .attr("x", hubX)
+                .attr("y", hubY + hubNodeRadius + 12)
+                .attr("text-anchor", "middle")
+                .text(`H${hubIdx}`)
+                .style("font-size", "9px");
 
-            // Draw connections from hub to pool nodes based on template weights
+            // Draw connections from hub to top activated pool nodes
             if (isWinner) {
-                let featureIdx = 0;
-                networkData.pool_names.forEach((poolName, poolIdx) => {
-                    const poolFeatures = networkData.features[poolName];
-                    poolFeatures.forEach((feature, fi) => {
-                        const weight = template[featureIdx];
-                        if (weight > 0.1) {
-                            const nodeKey = `pool-${poolName}-${feature}`;
-                            const nodePos = window.nodePositions[nodeKey];
+                // Get top 5 activated features for connection drawing
+                const topFeatures = template.map((w, i) => ({ idx: i, weight: w }))
+                    .sort((a, b) => b.weight - a.weight)
+                    .slice(0, 5);
 
-                            connectionGroup.append("path")
-                                .attr("class", "connection hub-connection positive highlighted")
-                                .attr("d", `M${hubX},${hubY} Q${(hubX + nodePos.x) / 2},${(hubY + nodePos.y) / 2} ${nodePos.x},${nodePos.y}`)
-                                .attr("stroke-width", weight * 4)
-                                .attr("stroke-opacity", 0.6 + weight * 0.4);
+                topFeatures.forEach(({ idx, weight }) => {
+                    if (weight > 0.05) {
+                        // Find which pool and feature index
+                        let cumSum = 0;
+                        for (let poolIdx = 0; poolIdx < networkData.pool_sizes.length; poolIdx++) {
+                            const poolSize = networkData.pool_sizes[poolIdx];
+                            if (idx < cumSum + poolSize) {
+                                const featureIdx = idx - cumSum;
+                                const poolName = networkData.pool_names[poolIdx];
+                                const nodeKey = `pool-${poolName}-${featureIdx}`;
+                                const nodePos = window.nodePositions[nodeKey];
+
+                                if (nodePos) {
+                                    // Draw curved connection from feature node down to hub
+                                    const midY = (nodePos.y + hubY) / 2;
+                                    connectionGroup.append("path")
+                                        .attr("class", "connection hub-connection positive highlighted")
+                                        .attr("d", `M${nodePos.x},${nodePos.y} Q${nodePos.x},${midY} ${hubX},${hubY}`)
+                                        .attr("stroke-width", weight * 5)
+                                        .attr("stroke-opacity", 0.4 + weight * 0.6);
+                                }
+                                break;
+                            }
+                            cumSum += poolSize;
                         }
-                        featureIdx++;
-                    });
+                    }
                 });
             }
         });
@@ -1425,7 +2058,7 @@
         container.innerHTML = Object.entries(hubGroups).map(([hub, episodes]) =>
             `<div class="hub-item">
                 <span class="hub-id" style="color: ${hubColors[hub % 10]}">Hub ${hub}</span>
-                <span class="members">${episodes.join(', ')}</span>
+                <span class="members">${episodes.length > 3 ? episodes.slice(0, 3).join(', ') + '...' : episodes.join(', ')}</span>
             </div>`
         ).join('');
     }
@@ -1464,6 +2097,7 @@
             renderNetwork();
             if (trainData) {
                 updateStep(currentStep);
+                renderPCAChart();
             }
         }
     });
