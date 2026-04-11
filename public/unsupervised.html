@@ -501,6 +501,48 @@
             border-color: #f59e0b;
         }
 
+        .pca-chart-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: #111827;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            z-index: 100;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .pca-chart-container:hover {
+            border-color: #f59e0b;
+        }
+
+        .pca-chart-container.expanded {
+            z-index: 200;
+        }
+
+        .pca-chart-container h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .pca-chart-container h4 .expand-hint {
+            font-size: 0.65rem;
+            color: #64748b;
+            font-weight: normal;
+        }
+
+        #pca-chart {
+            background: #1e293b;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
         .section-header {
             font-size: 0.75rem;
             font-weight: 600;
@@ -606,6 +648,10 @@
                 <span>0.5</span>
                 <span>1.0</span>
             </div>
+        </div>
+        <div class="pca-chart-container" id="pcaContainer" style="display: none;" onclick="togglePCASize()">
+            <h4>Hub Template Space (PCA) <span class="expand-hint">click to expand</span></h4>
+            <svg id="pca-chart" width="220" height="180"></svg>
         </div>
         <div class="info-card" id="infoCard">
             <h4>Step Information</h4>
@@ -1091,6 +1137,9 @@
         btn.textContent = 'TRAINING...';
         updateStatus('running', 'Training model...');
 
+        // Reset cached PCA for fresh computation
+        cachedPCA = null;
+
         const params = {
             vigilance: parseFloat(document.getElementById('vigilance').value),
             learning_rate: parseFloat(document.getElementById('learningRate').value),
@@ -1114,6 +1163,13 @@
             // Show hub list
             document.getElementById('hubListSection').style.display = 'block';
             updateHubList();
+
+            // Compute PCA once from final templates and cache it
+            cachedPCA = computePCA(trainData.final_templates);
+            if (cachedPCA) {
+                document.getElementById('pcaContainer').style.display = 'block';
+                renderPCAChart(currentStep);
+            }
 
             updateStatus('ready', `Training complete - ${trainData.num_hubs} hubs learned`);
 
@@ -1206,6 +1262,7 @@
         updateStepInfo(stepData);
         updateVisualization();
         renderHubs(step);
+        renderPCAChart(step);
     }
 
     function updateStepInfo(stepData) {
@@ -1428,6 +1485,278 @@
                 <span class="members">${episodes.join(', ')}</span>
             </div>`
         ).join('');
+    }
+
+    // Cached PCA projection (computed once after training)
+    let cachedPCA = null;
+    let pcaExpanded = false;
+
+    function togglePCASize() {
+        pcaExpanded = !pcaExpanded;
+        const container = document.getElementById('pcaContainer');
+        const hint = container.querySelector('.expand-hint');
+
+        if (pcaExpanded) {
+            container.classList.add('expanded');
+            hint.textContent = 'click to shrink';
+        } else {
+            container.classList.remove('expanded');
+            hint.textContent = 'click to expand';
+        }
+
+        renderPCAChart(currentStep);
+    }
+
+    function computePCA(templates) {
+        if (templates.length < 2) return null;
+
+        const n = templates.length;
+        const d = templates[0].length;
+
+        // Center the data
+        const mean = new Array(d).fill(0);
+        templates.forEach(t => {
+            for (let i = 0; i < d; i++) mean[i] += t[i];
+        });
+        for (let i = 0; i < d; i++) mean[i] /= n;
+
+        const centered = templates.map(t => t.map((v, i) => v - mean[i]));
+
+        // Power iteration for top 2 principal components
+        // Uses deterministic initialization to avoid random axis flips
+        function powerIteration(matrix, numIter = 50, seed = 0) {
+            // Deterministic initialization based on seed
+            let v = new Array(d).fill(0).map((_, i) => Math.sin(seed * 100 + i * 7.3) * 0.5);
+            let norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
+            v = v.map(x => x / norm);
+
+            for (let iter = 0; iter < numIter; iter++) {
+                // Compute A^T * A * v
+                const Av = new Array(d).fill(0);
+                matrix.forEach(row => {
+                    const dot = row.reduce((s, x, i) => s + x * v[i], 0);
+                    for (let i = 0; i < d; i++) Av[i] += row[i] * dot;
+                });
+                norm = Math.sqrt(Av.reduce((s, x) => s + x * x, 0)) + 1e-10;
+                v = Av.map(x => x / norm);
+            }
+
+            // Enforce consistent sign: make the largest absolute component positive
+            let maxIdx = 0;
+            let maxAbs = Math.abs(v[0]);
+            for (let i = 1; i < v.length; i++) {
+                if (Math.abs(v[i]) > maxAbs) {
+                    maxAbs = Math.abs(v[i]);
+                    maxIdx = i;
+                }
+            }
+            if (v[maxIdx] < 0) {
+                v = v.map(x => -x);
+            }
+
+            return v;
+        }
+
+        // Get first principal component
+        const pc1 = powerIteration(centered, 50, 1);
+
+        // Deflate: remove pc1 component from data
+        const deflated = centered.map(row => {
+            const proj = row.reduce((s, x, i) => s + x * pc1[i], 0);
+            return row.map((x, i) => x - proj * pc1[i]);
+        });
+
+        // Get second principal component
+        const pc2 = powerIteration(deflated, 50, 2);
+
+        // Project hub templates onto PC1 and PC2
+        const hubProjected = centered.map(row => [
+            row.reduce((s, x, i) => s + x * pc1[i], 0),
+            row.reduce((s, x, i) => s + x * pc2[i], 0)
+        ]);
+
+        // Also project episode data onto the same PCA space
+        const episodeProjected = networkData.X.map(ep => {
+            const centered_ep = ep.map((v, i) => v - mean[i]);
+            return [
+                centered_ep.reduce((s, x, i) => s + x * pc1[i], 0),
+                centered_ep.reduce((s, x, i) => s + x * pc2[i], 0)
+            ];
+        });
+
+        // Find top contributing dimensions for each PC
+        function getTopDimensions(pc, topN = 2) {
+            // Map dimension index to feature name
+            const dimNames = [];
+            let idx = 0;
+            for (const poolName of networkData.pool_names) {
+                for (const feature of networkData.features[poolName]) {
+                    dimNames.push({ idx, name: feature, pool: poolName, loading: Math.abs(pc[idx]) });
+                    idx++;
+                }
+            }
+            // Sort by absolute loading and take top N
+            dimNames.sort((a, b) => b.loading - a.loading);
+            return dimNames.slice(0, topN).map(d => d.name);
+        }
+
+        const pc1Dims = getTopDimensions(pc1);
+        const pc2Dims = getTopDimensions(pc2);
+
+        return {
+            hubs: hubProjected,
+            episodes: episodeProjected,
+            pc1Label: `PC1 (${pc1Dims.join(', ')})`,
+            pc2Label: `PC2 (${pc2Dims.join(', ')})`,
+            // Store PC vectors and mean for re-projecting hub templates at each step
+            pc1: pc1,
+            pc2: pc2,
+            mean: mean
+        };
+    }
+
+    // Project a template onto the cached PCA space
+    function projectTemplate(template) {
+        if (!cachedPCA) return null;
+        const centered = template.map((v, i) => v - cachedPCA.mean[i]);
+        return [
+            centered.reduce((s, x, i) => s + x * cachedPCA.pc1[i], 0),
+            centered.reduce((s, x, i) => s + x * cachedPCA.pc2[i], 0)
+        ];
+    }
+
+    function renderPCAChart(step) {
+        if (!trainData || !cachedPCA) return;
+
+        const hubData = trainData.hub_history[step];
+        const numHubs = hubData.templates.length;
+
+        if (numHubs < 1) {
+            document.getElementById('pcaContainer').style.display = 'none';
+            return;
+        }
+
+        document.getElementById('pcaContainer').style.display = 'block';
+
+        const svg = d3.select("#pca-chart");
+        svg.selectAll("*").remove();
+
+        // Use expanded or normal size
+        const width = pcaExpanded ? 660 : 220;
+        const height = pcaExpanded ? 540 : 180;
+        svg.attr("width", width).attr("height", height);
+
+        const margin = pcaExpanded
+            ? { top: 10, right: 10, bottom: 28, left: 28 }
+            : { top: 10, right: 10, bottom: 20, left: 16 };
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+
+        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Draw axis labels
+        const fontSize = pcaExpanded ? "11px" : "8px";
+
+        // X axis label (PC1)
+        g.append("text")
+            .attr("x", innerWidth / 2)
+            .attr("y", innerHeight + (pcaExpanded ? 18 : 12))
+            .attr("text-anchor", "middle")
+            .attr("font-size", fontSize)
+            .attr("fill", "#64748b")
+            .text(cachedPCA.pc1Label);
+
+        // Y axis label (PC2) - rotated
+        g.append("text")
+            .attr("transform", `rotate(-90)`)
+            .attr("x", -innerHeight / 2)
+            .attr("y", pcaExpanded ? -8 : -4)
+            .attr("text-anchor", "middle")
+            .attr("font-size", fontSize)
+            .attr("fill", "#64748b")
+            .text(cachedPCA.pc2Label);
+
+        // Project hub templates at this step onto PCA space (they change over time)
+        const hubPoints = hubData.templates.map(t => projectTemplate(t));
+        const episodePoints = cachedPCA.episodes;
+
+        // Compute scales based on final positions (episodes + final hubs) for consistency
+        // This keeps axes stable as hubs move during training
+        const allPoints = [...cachedPCA.hubs, ...episodePoints];
+        const xExtent = d3.extent(allPoints, d => d[0]);
+        const yExtent = d3.extent(allPoints, d => d[1]);
+        const xPad = (xExtent[1] - xExtent[0]) * 0.15 || 1;
+        const yPad = (yExtent[1] - yExtent[0]) * 0.15 || 1;
+
+        const xScale = d3.scaleLinear()
+            .domain([xExtent[0] - xPad, xExtent[1] + xPad])
+            .range([0, innerWidth]);
+
+        const yScale = d3.scaleLinear()
+            .domain([yExtent[0] - yPad, yExtent[1] + yPad])
+            .range([innerHeight, 0]);
+
+        const stepInfo = trainData.history[step];
+
+        // Determine which episodes have been seen up to this step
+        const seenEpisodes = new Set();
+        for (let s = 0; s <= step; s++) {
+            seenEpisodes.add(trainData.history[s].episode_idx);
+        }
+
+        // Scale factors for expanded view
+        const scale = pcaExpanded ? 2 : 1;
+
+        // Draw episode points first (lower layer, lighter opacity)
+        // Only show episodes that have been presented up to this step
+        episodePoints.forEach((pt, i) => {
+            if (!seenEpisodes.has(i)) return;
+
+            const isCurrentEpisode = i === selectedEpisode;
+            // Color episodes by their assigned hub
+            const assignment = trainData.final_assignments[i];
+            const hubIdx = assignment ? assignment.hub : 0;
+
+            g.append("circle")
+                .attr("cx", xScale(pt[0]))
+                .attr("cy", yScale(pt[1]))
+                .attr("r", (isCurrentEpisode ? 5 : 3) * scale)
+                .attr("fill", hubColors[hubIdx % 10])
+                .attr("stroke", isCurrentEpisode ? "#fff" : "none")
+                .attr("stroke-width", (isCurrentEpisode ? 1.5 : 0) * scale)
+                .attr("opacity", isCurrentEpisode ? 0.6 : 0.25);
+
+            // Show episode labels when expanded
+            if (pcaExpanded) {
+                g.append("text")
+                    .attr("x", xScale(pt[0]) + 6 * scale)
+                    .attr("y", yScale(pt[1]) + 3)
+                    .attr("font-size", "10px")
+                    .attr("fill", "#64748b")
+                    .attr("opacity", isCurrentEpisode ? 0.9 : 0.5)
+                    .text(networkData.episodes[i].name);
+            }
+        });
+
+        // Draw hub points on top
+        hubPoints.forEach((pt, i) => {
+            const isWinner = stepInfo.winner === i;
+            g.append("circle")
+                .attr("cx", xScale(pt[0]))
+                .attr("cy", yScale(pt[1]))
+                .attr("r", (isWinner ? 8 : 6) * scale)
+                .attr("fill", hubColors[i % 10])
+                .attr("stroke", isWinner ? "#fff" : "#1e293b")
+                .attr("stroke-width", (isWinner ? 2 : 1.5) * scale)
+                .attr("opacity", 0.9);
+
+            g.append("text")
+                .attr("x", xScale(pt[0]) + 8 * scale)
+                .attr("y", yScale(pt[1]) + 3)
+                .attr("font-size", pcaExpanded ? "14px" : "9px")
+                .attr("fill", "#e2e8f0")
+                .text(`H${i}`);
+        });
     }
 
     function playbackStep(delta) {
