@@ -3,106 +3,208 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Semantic Models</title>
+    <title>Semantic Network Models</title>
     <style>
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             margin: 0;
-            background: #0a0f1a;
+            background: radial-gradient(ellipse at top, #111827 0%, #0a0f1a 60%);
             color: #e2e8f0;
             font-family: 'Segoe UI', system-ui, sans-serif;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 80px 24px;
+            padding: 80px 24px 60px 24px;
         }
 
-        h1 {
-            font-size: 2rem;
-            font-weight: 600;
+        .header {
+            text-align: center;
+            max-width: 720px;
+            margin-bottom: 48px;
+        }
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
             color: #f8fafc;
-            margin: 0 0 48px 0;
+            margin: 0 0 14px 0;
+            letter-spacing: -0.02em;
+        }
+        .header p {
+            font-size: 1rem;
+            color: #94a3b8;
+            margin: 0;
+            line-height: 1.6;
         }
 
         .models-container {
             display: flex;
             flex-direction: column;
-            gap: 24px;
-            max-width: 600px;
+            gap: 32px;
+            max-width: 760px;
             width: 100%;
         }
 
         .section-label {
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: #64748b;
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #f59e0b;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: -8px;
+            letter-spacing: 2px;
+            margin: 0 0 -12px 4px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(to right, #334155, transparent);
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 700px) {
+            .card-grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 2rem; }
         }
 
         .model-link {
             display: block;
             background: #111827;
-            border-radius: 8px;
-            padding: 16px 20px;
+            border-radius: 12px;
+            padding: 22px 22px;
             text-decoration: none;
             border: 1px solid #1f2937;
-            transition: all 0.15s;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
         }
-
+        .model-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent, #334155);
+            transition: width 0.2s;
+        }
         .model-link:hover {
-            background: #1e293b;
+            background: #1a2238;
             border-color: #334155;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
         }
+        .model-link:hover::before { width: 6px; }
 
         .model-link h3 {
-            font-size: 1rem;
-            font-weight: 500;
+            font-size: 1.1rem;
+            font-weight: 600;
             color: #f1f5f9;
-            margin: 0 0 4px 0;
+            margin: 0 0 6px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-
         .model-link p {
             font-size: 0.85rem;
-            color: #64748b;
+            color: #94a3b8;
             margin: 0;
+            line-height: 1.5;
+        }
+        .model-link .tag {
+            display: inline-block;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #64748b;
+            padding: 2px 7px;
+            background: #1e293b;
+            border-radius: 4px;
+            margin-left: 8px;
+            font-weight: 600;
+        }
+        .model-link.new .tag { background: #052e1c; color: #22c55e; }
+
+        .iac     { --accent: #38bdf8; }
+        .rumel   { --accent: #a78bfa; }
+        .unsup   { --accent: #f59e0b; }
+        .csv     { --accent: #fb7185; }
+        .sensory { --accent: #22c55e; }
+        .hier    { --accent: #f43f5e; }
+
+        .footer {
+            margin-top: 64px;
+            font-size: 0.75rem;
+            color: #475569;
+            text-align: center;
         }
     </style>
 </head>
 <body>
 
-<h1>Semantic Models</h1>
-
-<div class="models-container">
-    <span class="section-label">Supervised</span>
-
-    <a href="/iac.html" class="model-link">
-        <h3>IAC Visualizer</h3>
-        <p>Interactive Activation and Competition network</p>
-    </a>
-
-    <a href="/rumelhart.html" class="model-link">
-        <h3>Rumelhart Model</h3>
-        <p>Concept-property semantic memory</p>
-    </a>
-
-    <span class="section-label" style="margin-top: 16px;">Unsupervised</span>
-
-    <a href="/unsupervised_csv.html" class="model-link">
-        <h3>Concept Learning (Distributed)</h3>
-        <p>Vigilance-based clustering with custom data</p>
-    </a>
-
-    <a href="/unsupervised.html" class="model-link">
-        <h3>Concept Learning (Default)</h3>
-        <p>Vigilance-based clustering with preset data</p>
-    </a>
+<div class="header">
+    <h1>Semantic Network Models</h1>
+    <p>Interactive visualizations of classic and modern connectionist models for concept learning, semantic memory, and unsupervised category formation.</p>
 </div>
 
+<div class="models-container">
+
+    <span class="section-label">Supervised</span>
+
+    <div class="card-grid">
+        <a href="/iac.html" class="model-link iac">
+            <h3>IAC Visualizer</h3>
+            <p>Interactive Activation and Competition network &mdash; localist semantic memory with bidirectional pool inhibition.</p>
+        </a>
+
+        <a href="/rumelhart.html" class="model-link rumel">
+            <h3>Rumelhart Model</h3>
+            <p>Backprop-trained concept-property semantic memory learning distributed representations.</p>
+        </a>
+    </div>
+
+    <span class="section-label">Unsupervised &mdash; Single ART</span>
+
+    <div class="card-grid">
+        <a href="/unsupervised.html" class="model-link unsup">
+            <h3>Concept Learning (Default)</h3>
+            <p>Vigilance-based clustering on a preset dataset of fruits, blocks, rocks, stars, etc.</p>
+        </a>
+
+        <a href="/unsupervised_csv.html" class="model-link csv">
+            <h3>Concept Learning (CSV)</h3>
+            <p>Same model, but paste your own CSV data &mdash; supports categorical or numeric pool-prefixed columns.</p>
+        </a>
+
+        <a href="/sensory_dropout.html" class="model-link sensory new">
+            <h3>Sensory Dropout ART <span class="tag">New</span></h3>
+            <p>Cluster 8 noisy concepts (pine, oak, rose, daisy, robin, canary, sunfish, salmon) with random sensory dropout across color, locomotion, covering, body parts, and habitat pools.</p>
+        </a>
+    </div>
+
+    <span class="section-label">Unsupervised &mdash; Hierarchical</span>
+
+    <div class="card-grid">
+        <a href="/hierarchical_art.html" class="model-link hier new">
+            <h3>Hierarchical ART <span class="tag">New</span></h3>
+            <p>Three parallel ART layers at increasing vigilance &mdash; coarse super-categories, mid-level categories, and fine-grained specific concepts. Watch hierarchy emerge.</p>
+        </a>
+    </div>
+
+</div>
+
+<div class="footer">
+    Use the menu in the top-right corner to navigate between models.
+</div>
+
+<script src="/nav.js"></script>
 </body>
 </html>

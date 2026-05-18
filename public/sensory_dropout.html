@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensory Dropout ART</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/sensory_data.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: #0a0f1a;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 340px;
+            background: #111827;
+            padding: 24px;
+            border-right: 1px solid #1f2937;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+            scrollbar-width: none;
+        }
+        #sidebar::-webkit-scrollbar { display: none; }
+
+        #sidebar h2 {
+            margin: 0 0 4px 0;
+            font-size: 1.4rem;
+            color: #f8fafc;
+            border-bottom: 2px solid #f59e0b;
+            padding-bottom: 12px;
+        }
+        .subtitle {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin: -4px 0 8px 0;
+            line-height: 1.4;
+        }
+
+        .param-group { display: flex; flex-direction: column; gap: 6px; }
+        .param-group label { font-size: 0.85rem; color: #94a3b8; font-weight: 500; }
+        .param-group input[type="number"] {
+            width: 100%;
+            padding: 10px 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #f1f5f9;
+            font-size: 0.95rem;
+        }
+        .param-group input[type="number"]:focus {
+            outline: none;
+            border-color: #f59e0b;
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover { transform: translateY(-1px); }
+        .btn-primary:disabled { background: #374151; cursor: not-allowed; transform: none; }
+
+        .scrubber-section {
+            background: #1e293b;
+            padding: 16px;
+            border-radius: 8px;
+        }
+        .scrubber-section label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+        .scrubber-section #stepLabel { color: #f59e0b; font-weight: 600; }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #334155;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #f59e0b;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .playback-controls { display: flex; gap: 8px; margin-top: 12px; }
+        .playback-controls button {
+            flex: 1;
+            padding: 8px;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #e2e8f0;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .playback-controls button:hover { background: #475569; }
+
+        #main-container { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
+        #viz-container { flex-grow: 1; position: relative; overflow: hidden; }
+        #canvas { width: 100%; height: 100%; }
+
+        .node {
+            cursor: pointer;
+            stroke: #1e293b;
+            stroke-width: 2px;
+            transition: stroke 0.15s, stroke-width 0.15s;
+        }
+        .node:hover { stroke: #fbbf24; stroke-width: 3px; }
+        .node.winner { stroke: #f59e0b; stroke-width: 4px; }
+        .node-label {
+            fill: #cbd5e1;
+            font-size: 10px;
+            pointer-events: none;
+            font-weight: 500;
+        }
+        .layer-label {
+            fill: #64748b;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .layer-bg {
+            fill: #111827;
+            stroke: #1f2937;
+            stroke-width: 1px;
+            rx: 12;
+        }
+        .connection { fill: none; stroke-opacity: 0.3; pointer-events: none; }
+        .connection.positive { stroke: #22c55e; }
+        .connection.highlighted { stroke-opacity: 1; stroke-width: 3; }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #111827;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+        }
+        .legend h4 { margin: 0 0 12px 0; font-size: 0.85rem; color: #94a3b8; }
+        .legend-gradient { width: 150px; height: 16px; border-radius: 4px; margin-bottom: 6px; }
+        .legend-labels { display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b; }
+
+        .pca-chart-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 220px;
+            background: #111827;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            z-index: 100;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .pca-chart-container.expanded { width: 660px; }
+        .pca-chart-container h4 { margin: 0 0 8px 0; font-size: 0.85rem; color: #94a3b8; }
+        #pca-chart { width: 100%; height: 180px; transition: height 0.3s ease; }
+        .pca-chart-container.expanded #pca-chart { height: 540px; }
+        .pca-dot { transition: r 0.15s; }
+        .pca-dot:hover { cursor: pointer; }
+
+        .info-card {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 300px;
+            max-height: 350px;
+            background: #111827;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            z-index: 100;
+            overflow-y: auto;
+        }
+        .info-card h4 { margin: 0 0 12px 0; font-size: 0.85rem; color: #94a3b8; }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 0.8rem;
+            border-bottom: 1px solid #1f2937;
+        }
+        .info-row .label { color: #94a3b8; }
+        .info-row .value { color: #e2e8f0; font-weight: 500; }
+        .info-row .value.snap { color: #22c55e; }
+        .info-row .value.recruit { color: #f59e0b; }
+
+        .pool-similarity-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0;
+        }
+        .pool-similarity-bar .name {
+            width: 70px;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .pool-similarity-bar .bar {
+            flex: 1;
+            height: 12px;
+            background: #334155;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        .pool-similarity-bar .fill { height: 100%; border-radius: 6px; transition: width 0.3s; }
+        .pool-similarity-bar .threshold {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 2px;
+            background: #fff;
+        }
+        .pool-similarity-bar .value {
+            width: 40px;
+            font-size: 0.75rem;
+            text-align: right;
+            color: #e2e8f0;
+        }
+
+        .episode-list {
+            background: #1e293b;
+            padding: 12px;
+            border-radius: 6px;
+            max-height: 55vh;
+            overflow-y: auto;
+        }
+        .episode-list h4 { margin: 0 0 8px 0; font-size: 0.8rem; color: #94a3b8; }
+        .episode-btn {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #e2e8f0;
+            font-size: 0.7rem;
+            cursor: pointer;
+            margin: 2px;
+            transition: all 0.15s;
+        }
+        .episode-btn:hover { background: #475569; }
+        .episode-btn.active { background: #f59e0b; color: #1e293b; }
+
+        .hub-list {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #334155;
+        }
+        .hub-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 8px;
+            background: #1e293b;
+            border-radius: 4px;
+            margin: 4px 0;
+            font-size: 0.8rem;
+        }
+        .hub-item .hub-id { font-weight: 600; }
+        .hub-item .members { color: #94a3b8; font-size: 0.7rem; }
+
+        .status {
+            font-size: 0.8rem;
+            color: #64748b;
+            text-align: center;
+            padding: 8px;
+        }
+        .status.running { color: #fbbf24; }
+        .status.ready { color: #22c55e; }
+        .status.error { color: #ef4444; }
+
+        .tooltip {
+            position: absolute;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 1000;
+            min-width: 180px;
+            max-width: 350px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        .tooltip.visible { opacity: 1; }
+        .tooltip-header {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #f1f5f9;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #334155;
+        }
+        .tooltip-content { font-size: 0.85rem; color: #94a3b8; }
+
+        .reset-view-btn {
+            position: absolute;
+            top: 20px;
+            right: 76px;
+            padding: 8px 16px;
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.2s;
+        }
+        .reset-view-btn:hover { background: #475569; border-color: #f59e0b; }
+
+        .section-header {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #f59e0b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 16px 0 8px 0;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #334155;
+        }
+        .params-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+        .dataset-info {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            background: #1e293b;
+            padding: 10px 12px;
+            border-radius: 6px;
+            line-height: 1.5;
+        }
+        .dataset-info strong { color: #f1f5f9; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>Sensory Dropout ART</h2>
+    <div class="subtitle">8 categories &times; 20 noisy samples with random sensory dropout. Vigilance-based clustering on color, locomotion, covering, body parts, and habitat pools.</div>
+
+    <div class="dataset-info">
+        <strong>Items:</strong> pine, oak, rose, daisy, robin, canary, sunfish, salmon<br>
+        <strong>Pools:</strong> Color, Locomotion, Covering, BodyParts, Habitat<br>
+        <strong>Note:</strong> Some samples have missing values (dropout) filled with 0 &mdash; expect noisy similarity per pool.
+    </div>
+
+    <div class="section-header">Hyperparameters</div>
+
+    <div class="params-grid">
+        <div class="param-group">
+            <label>Vigilance</label>
+            <input type="number" id="vigilance" value="0.7" step="any" data-arrow-step="0.05" min="0" max="1">
+        </div>
+        <div class="param-group">
+            <label>Learning Rate</label>
+            <input type="number" id="learningRate" value="0.1" step="0.01" min="0.01" max="1">
+        </div>
+        <div class="param-group">
+            <label>Gain</label>
+            <input type="number" id="gain" value="1.0" step="0.1" min="0.1" max="5">
+        </div>
+        <div class="param-group">
+            <label>Inhibition</label>
+            <input type="number" id="inhibition" value="0.2" step="0.05" min="0" max="1">
+        </div>
+    </div>
+
+    <div class="param-group">
+        <label>Training Passes</label>
+        <input type="number" id="numPasses" value="2" min="1" max="10">
+    </div>
+
+    <div class="section-header">Training</div>
+
+    <button id="trainBtn" class="btn-primary" onclick="runTraining()">TRAIN MODEL</button>
+
+    <div class="scrubber-section" id="scrubberSection" style="display: none;">
+        <label>
+            <span>Training Step</span>
+            <span id="stepLabel">0 / 0</span>
+        </label>
+        <input type="range" id="scrubber" min="0" max="0" value="0" oninput="updateStep(parseInt(this.value))">
+        <div class="playback-controls">
+            <button onclick="playbackStep(-5)">-5</button>
+            <button onclick="playbackStep(-1)">-1</button>
+            <button onclick="togglePlay()" id="playBtn">Play</button>
+            <button onclick="playbackStep(1)">+1</button>
+            <button onclick="playbackStep(5)">+5</button>
+        </div>
+    </div>
+
+    <div class="section-header">Episodes</div>
+
+    <div class="episode-list">
+        <h4>Select Episode</h4>
+        <div id="episodeButtons"></div>
+    </div>
+
+    <div class="hub-list" id="hubListSection" style="display: none;">
+        <h4 style="margin: 0 0 8px 0; font-size: 0.8rem; color: #94a3b8;">Learned Hubs</h4>
+        <div id="hubList"></div>
+    </div>
+
+    <div id="status" class="status">Click TRAIN MODEL to start</div>
+</div>
+
+<div id="main-container">
+    <div id="viz-container">
+        <svg id="canvas"></svg>
+        <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+        <div id="tooltip" class="tooltip">
+            <div class="tooltip-header" id="tooltip-name"></div>
+            <div class="tooltip-content" id="tooltip-content"></div>
+        </div>
+        <div class="legend">
+            <h4>Activation Level</h4>
+            <div class="legend-gradient" id="legendGradient"></div>
+            <div class="legend-labels">
+                <span>0.0</span><span>0.5</span><span>1.0</span>
+            </div>
+        </div>
+        <div class="pca-chart-container" id="pcaChartContainer" style="display: none;" onclick="togglePCASize()">
+            <h4 id="pcaTitle">Episode Similarity (PCA)</h4>
+            <svg id="pca-chart"></svg>
+        </div>
+        <div class="info-card" id="infoCard">
+            <h4>Step Information</h4>
+            <div id="stepInfo">Train the model to see step details</div>
+            <div id="poolSimilarities" style="margin-top: 12px;"></div>
+        </div>
+    </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+    let networkData = null;
+    let trainData = null;
+    let selectedEpisode = 0;
+    let currentStep = 0;
+    let isPlaying = false;
+    let playInterval = null;
+    let pcaProjection = null;
+    let cachedPCA = null;
+    let isPCAExpanded = false;
+
+    const svg = d3.select("#canvas");
+    let g;
+    let zoomBehavior;
+
+    const activationColor = d3.scaleSequential().domain([0, 1]).interpolator(d3.interpolateYlOrRd);
+    const hubColors = d3.schemeCategory10;
+
+    function init() {
+        setupZoom();
+        setupLegendGradient();
+        loadDataset();
+    }
+
+    function setupZoom() {
+        zoomBehavior = d3.zoom().scaleExtent([0.1, 3]).on("zoom", (event) => {
+            g.attr("transform", event.transform);
+        });
+        svg.call(zoomBehavior);
+        g = svg.append("g");
+    }
+
+    function resetView() {
+        svg.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    function setupLegendGradient() {
+        const gradient = document.getElementById('legendGradient');
+        gradient.style.background = `linear-gradient(to right, ${activationColor(0)}, ${activationColor(0.5)}, ${activationColor(1)})`;
+    }
+
+    function parseCSV(csvText) {
+        const lines = csvText.trim().split('\n');
+        const header = lines[0].split(',').map(s => s.trim());
+        const columnNames = header.slice(1);
+
+        const rawData = [];
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            const parts = line.split(',').map(s => s.trim());
+            rawData.push({ name: parts[0], values: parts.slice(1) });
+        }
+
+        const episodes = [];
+        const X = [];
+        rawData.forEach(row => {
+            episodes.push({ name: row.name });
+            const values = row.values.map(v => parseFloat(v) || 0);
+            while (values.length < columnNames.length) values.push(0);
+            X.push(values);
+        });
+
+        // Pool format using "Pool:Feature" naming
+        const poolOrder = [];
+        const poolMap = {};
+        const featureNames = [];
+        columnNames.forEach(colName => {
+            const colonIdx = colName.indexOf(':');
+            const poolName = colonIdx > 0 ? colName.substring(0, colonIdx) : 'Features';
+            const featureName = colonIdx > 0 ? colName.substring(colonIdx + 1) : colName;
+            if (!poolMap[poolName]) { poolMap[poolName] = []; poolOrder.push(poolName); }
+            poolMap[poolName].push(featureName);
+            featureNames.push(colName);
+        });
+
+        const pool_names = [];
+        const pool_sizes = [];
+        const features = {};
+        poolOrder.forEach(name => {
+            pool_names.push(name);
+            pool_sizes.push(poolMap[name].length);
+            features[name] = poolMap[name];
+        });
+
+        return { pool_sizes, pool_names, features, episodes, X, featureNames };
+    }
+
+    function loadDataset() {
+        try {
+            networkData = parseCSV(window.SENSORY_DROPOUT_CSV);
+            renderNetwork();
+            updateEpisodeButtons();
+            updateStatus('ready', `${networkData.episodes.length} samples, ${networkData.pool_names.length} pools, ${networkData.featureNames.length} features`);
+        } catch (e) {
+            console.error(e);
+            updateStatus('error', 'Failed to load dataset: ' + e.message);
+        }
+    }
+
+    function sum(arr) { return arr.reduce((a, b) => a + b, 0); }
+
+    function computePoolSimilaritiesForDisplay(x, y, pool_sizes) {
+        const sims = [];
+        let start = 0;
+        for (const size of pool_sizes) {
+            const end = start + size;
+            const xp = x.slice(start, end);
+            const yp = y.slice(start, end);
+            const xNorm = Math.sqrt(xp.reduce((s, v) => s + v * v, 0));
+            const yNorm = Math.sqrt(yp.reduce((s, v) => s + v * v, 0));
+            if (xNorm < 1e-8 || yNorm < 1e-8) sims.push(0);
+            else {
+                let dot = 0;
+                for (let i = 0; i < xp.length; i++) dot += xp[i] * yp[i];
+                sims.push(dot / (xNorm * yNorm + 1e-8));
+            }
+            start = end;
+        }
+        return sims;
+    }
+
+    function updateEpisodeButtons() {
+        const container = document.getElementById('episodeButtons');
+        if (!networkData) { container.innerHTML = ''; return; }
+        container.innerHTML = networkData.episodes.map((ep, i) =>
+            `<button class="episode-btn ${i === selectedEpisode ? 'active' : ''}" onclick="selectEpisode(${i})">${ep.name}</button>`
+        ).join('');
+    }
+
+    function selectEpisode(idx) {
+        selectedEpisode = idx;
+        updateEpisodeButtons();
+        updateVisualization();
+    }
+
+    function renderNetwork() {
+        if (!networkData) return;
+        const container = document.getElementById('viz-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        svg.attr("width", width).attr("height", height);
+        g.selectAll("*").remove();
+
+        const pool_names = networkData.pool_names;
+        const pool_sizes = networkData.pool_sizes;
+        const features = networkData.features;
+
+        const poolWidth = 150;
+        const poolSpacing = 25;
+        const nodeSpacing = 30;
+        const nodeRadius = 9;
+        const boxPadding = 20;
+        const circleLeftOffset = 25;
+        const startX = 50;
+        const startY = 60;
+
+        const maxPoolSize = Math.max(...pool_sizes);
+        const maxPoolHeight = boxPadding + (maxPoolSize - 1) * nodeSpacing + boxPadding;
+        const totalPoolsWidth = pool_names.length * poolWidth + (pool_names.length - 1) * poolSpacing;
+
+        const poolPositions = {};
+        const nodePositions = {};
+
+        pool_names.forEach((poolName, poolIdx) => {
+            const poolFeatures = features[poolName];
+            const poolSize = pool_sizes[poolIdx];
+            const poolX = startX + poolIdx * (poolWidth + poolSpacing);
+            poolPositions[poolName] = { x: poolX, y: startY, width: poolWidth, height: maxPoolHeight };
+            const totalNodesHeight = (poolSize - 1) * nodeSpacing;
+            const nodeStartY = startY + boxPadding + (maxPoolHeight - 2 * boxPadding - totalNodesHeight) / 2;
+            poolFeatures.forEach((feature, featureIdx) => {
+                const globalIdx = sum(pool_sizes.slice(0, poolIdx)) + featureIdx;
+                nodePositions[`pool-${poolName}-${featureIdx}`] = {
+                    x: poolX + circleLeftOffset,
+                    y: nodeStartY + featureIdx * nodeSpacing,
+                    pool: poolName,
+                    feature: feature,
+                    featureIdx: featureIdx,
+                    globalIdx: globalIdx
+                };
+            });
+        });
+
+        const hubAreaY = startY + maxPoolHeight + 50;
+        const hubAreaWidth = Math.max(totalPoolsWidth, 300);
+        const hubAreaX = startX + (totalPoolsWidth - hubAreaWidth) / 2;
+        const hubAreaHeight = 80;
+
+        g.selectAll(".layer-bg.pool")
+            .data(pool_names).enter()
+            .append("rect")
+            .attr("class", "layer-bg pool")
+            .attr("x", d => poolPositions[d].x)
+            .attr("y", d => poolPositions[d].y)
+            .attr("width", d => poolPositions[d].width)
+            .attr("height", d => poolPositions[d].height);
+
+        g.selectAll(".layer-label.pool")
+            .data(pool_names).enter()
+            .append("text")
+            .attr("class", "layer-label pool")
+            .attr("x", d => poolPositions[d].x + poolPositions[d].width / 2)
+            .attr("y", d => poolPositions[d].y - 20)
+            .attr("text-anchor", "middle")
+            .text(d => d);
+
+        g.append("rect")
+            .attr("class", "layer-bg hub")
+            .attr("id", "hub-area-bg")
+            .attr("x", hubAreaX)
+            .attr("y", hubAreaY - 10)
+            .attr("width", hubAreaWidth)
+            .attr("height", hubAreaHeight);
+
+        g.append("text")
+            .attr("class", "layer-label")
+            .attr("id", "hub-label")
+            .attr("x", hubAreaX + hubAreaWidth / 2)
+            .attr("y", hubAreaY + hubAreaHeight + 20)
+            .attr("text-anchor", "middle")
+            .text("HUBS");
+
+        const nodeGroup = g.append("g").attr("class", "nodes");
+        const connectionGroup = g.append("g").attr("class", "connections");
+
+        const allPoolNodes = Object.entries(nodePositions).map(([key, pos]) => ({ key, ...pos }));
+
+        nodeGroup.selectAll(".node.pool-node")
+            .data(allPoolNodes).enter()
+            .append("circle")
+            .attr("class", "node pool-node")
+            .attr("id", d => `node-${d.key}`)
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y)
+            .attr("r", nodeRadius)
+            .attr("fill", "#4b5563")
+            .on("mouseenter", (event, d) => handleNodeHover(event, d, true))
+            .on("mouseleave", (event, d) => handleNodeHover(event, d, false));
+
+        const maxTextWidth = poolWidth - circleLeftOffset - nodeRadius - 10;
+        const maxChars = Math.floor(maxTextWidth / 6);
+
+        nodeGroup.selectAll(".node-label.pool")
+            .data(allPoolNodes).enter()
+            .append("text")
+            .attr("class", "node-label pool")
+            .attr("x", d => d.x + nodeRadius + 5)
+            .attr("y", d => d.y + 4)
+            .text(d => d.feature.length > maxChars ? d.feature.slice(0, maxChars - 1) + '…' : d.feature)
+            .style("font-size", "10px");
+
+        window.nodePositions = nodePositions;
+        window.poolPositions = poolPositions;
+        window.hubArea = {
+            x: hubAreaX, y: hubAreaY,
+            width: hubAreaWidth, height: hubAreaHeight,
+            maxHeight: 200, totalPoolsWidth: totalPoolsWidth, poolsStartX: startX
+        };
+        window.connectionGroup = connectionGroup;
+        window.nodeGroup = nodeGroup;
+    }
+
+    function handleNodeHover(event, d, isEntering) {
+        const tooltip = document.getElementById('tooltip');
+        if (isEntering) {
+            document.getElementById('tooltip-name').textContent = d.feature || `Hub ${d.hubIdx}`;
+            let content = d.pool ? `Pool: ${d.pool}` : 'Concept Hub';
+            if (d.globalIdx !== undefined && networkData.X) {
+                content += `<br>Current activation: ${networkData.X[selectedEpisode][d.globalIdx].toFixed(2)}`;
+            }
+            document.getElementById('tooltip-content').innerHTML = content;
+            const rect = event.target.getBoundingClientRect();
+            const container = document.getElementById('viz-container').getBoundingClientRect();
+            tooltip.style.left = (rect.right - container.left + 10) + 'px';
+            tooltip.style.top = (rect.top - container.top) + 'px';
+            tooltip.classList.add('visible');
+        } else tooltip.classList.remove('visible');
+    }
+
+    function powerIteration(matrix, numIter = 50, seed = 0) {
+        const d = matrix.length;
+        let v = new Array(d).fill(0).map((_, i) => Math.sin(seed * 100 + i * 7.3) * 0.5);
+        for (let iter = 0; iter < numIter; iter++) {
+            const newV = new Array(d).fill(0);
+            for (let j = 0; j < d; j++)
+                for (let k = 0; k < d; k++)
+                    newV[j] += matrix[j][k] * v[k];
+            const norm = Math.sqrt(newV.reduce((s, x) => s + x * x, 0)) + 1e-8;
+            v = newV.map(x => x / norm);
+        }
+        let maxIdx = 0; let maxAbs = Math.abs(v[0]);
+        for (let i = 1; i < d; i++) if (Math.abs(v[i]) > maxAbs) { maxAbs = Math.abs(v[i]); maxIdx = i; }
+        if (v[maxIdx] < 0) v = v.map(x => -x);
+        return v;
+    }
+
+    function computePCA(data) {
+        if (!data || data.length < 2) return null;
+        const n = data.length;
+        const d = data[0].length;
+        const mean = new Array(d).fill(0);
+        for (let i = 0; i < n; i++) for (let j = 0; j < d; j++) mean[j] += data[i][j];
+        for (let j = 0; j < d; j++) mean[j] /= n;
+        const centered = data.map(row => row.map((v, j) => v - mean[j]));
+
+        const cov = new Array(d).fill(null).map(() => new Array(d).fill(0));
+        for (let i = 0; i < n; i++)
+            for (let j = 0; j < d; j++)
+                for (let k = 0; k < d; k++)
+                    cov[j][k] += centered[i][j] * centered[i][k];
+        for (let j = 0; j < d; j++) for (let k = 0; k < d; k++) cov[j][k] /= n;
+
+        const v1 = powerIteration(cov, 50, 1);
+        const lambda1 = v1.reduce((s, vi, i) => {
+            let su = 0;
+            for (let k = 0; k < d; k++) su += cov[i][k] * v1[k];
+            return s + vi * su;
+        }, 0);
+        const covDeflated = cov.map((row, i) => row.map((val, j) => val - lambda1 * v1[i] * v1[j]));
+        const v2 = powerIteration(covDeflated, 50, 2);
+
+        const projections = centered.map(row => [
+            row.reduce((s, v, i) => s + v * v1[i], 0),
+            row.reduce((s, v, i) => s + v * v2[i], 0)
+        ]);
+
+        const getTopDimensions = (pc, topN = 3) =>
+            pc.map((w, i) => ({ idx: i, weight: Math.abs(w) }))
+                .sort((a, b) => b.weight - a.weight)
+                .slice(0, topN)
+                .map(d => {
+                    const name = networkData.featureNames[d.idx];
+                    return name.length > 12 ? name.slice(0, 12) + '…' : name;
+                });
+
+        const pc1Dims = getTopDimensions(v1);
+        const pc2Dims = getTopDimensions(v2);
+        cachedPCA = { mean, pc1: v1, pc2: v2, pc1Dims, pc2Dims };
+        return { projections, mean, v1, v2, pc1Dims, pc2Dims };
+    }
+
+    function projectTemplate(template) {
+        if (!cachedPCA) return null;
+        const centered = template.map((v, i) => v - cachedPCA.mean[i]);
+        return [
+            centered.reduce((s, x, i) => s + x * cachedPCA.pc1[i], 0),
+            centered.reduce((s, x, i) => s + x * cachedPCA.pc2[i], 0)
+        ];
+    }
+
+    function togglePCASize() {
+        isPCAExpanded = !isPCAExpanded;
+        document.getElementById('pcaChartContainer').classList.toggle('expanded', isPCAExpanded);
+        setTimeout(() => renderPCAChart(), 350);
+    }
+
+    function renderPCAChart() {
+        if (!trainData || !pcaProjection) return;
+        document.getElementById('pcaChartContainer').style.display = 'block';
+        const chartSvg = d3.select("#pca-chart");
+        const width = isPCAExpanded ? 628 : 188;
+        const height = isPCAExpanded ? 540 : 180;
+        chartSvg.attr("width", width).attr("height", height);
+        chartSvg.selectAll("*").remove();
+
+        const margin = { top: 15, right: 60, bottom: 35, left: 35 };
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+        const chartG = chartSvg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const allPoints = pcaProjection.projections;
+        const hubData = trainData.hub_history[currentStep];
+        const hubProjections = hubData.templates.map(t => projectTemplate(t));
+        const all = [...allPoints, ...hubProjections.filter(p => p !== null)];
+        const xExtent = d3.extent(all, d => d[0]);
+        const yExtent = d3.extent(all, d => d[1]);
+        const xPad = (xExtent[1] - xExtent[0]) * 0.15 || 0.5;
+        const yPad = (yExtent[1] - yExtent[0]) * 0.15 || 0.5;
+        const xScale = d3.scaleLinear().domain([xExtent[0] - xPad, xExtent[1] + xPad]).range([0, innerWidth]);
+        const yScale = d3.scaleLinear().domain([yExtent[0] - yPad, yExtent[1] + yPad]).range([innerHeight, 0]);
+
+        chartG.append("g").attr("transform", `translate(0,${innerHeight})`)
+            .call(d3.axisBottom(xScale).ticks(isPCAExpanded ? 8 : 4).tickSize(3))
+            .attr("color", "#64748b").attr("font-size", isPCAExpanded ? "10px" : "8px");
+        chartG.append("g").call(d3.axisLeft(yScale).ticks(isPCAExpanded ? 8 : 4).tickSize(3))
+            .attr("color", "#64748b").attr("font-size", isPCAExpanded ? "10px" : "8px");
+
+        const pc1Label = cachedPCA && cachedPCA.pc1Dims ? `PC1 (${cachedPCA.pc1Dims.join(', ')})` : 'PC1';
+        const pc2Label = cachedPCA && cachedPCA.pc2Dims ? `PC2 (${cachedPCA.pc2Dims.join(', ')})` : 'PC2';
+
+        chartG.append("text").attr("x", innerWidth / 2).attr("y", innerHeight + (isPCAExpanded ? 28 : 22))
+            .attr("text-anchor", "middle").attr("fill", "#94a3b8")
+            .attr("font-size", isPCAExpanded ? "11px" : "8px").text(pc1Label);
+        chartG.append("text").attr("x", -innerHeight / 2).attr("y", isPCAExpanded ? -25 : -20)
+            .attr("text-anchor", "middle").attr("fill", "#94a3b8")
+            .attr("font-size", isPCAExpanded ? "11px" : "8px")
+            .attr("transform", "rotate(-90)").text(pc2Label);
+
+        const seenEpisodes = new Set();
+        const episodeHubs = {};
+        for (let i = 0; i <= currentStep; i++) {
+            const step = trainData.history[i];
+            seenEpisodes.add(step.episode_idx);
+            episodeHubs[step.episode_idx] = step.winner;
+        }
+
+        allPoints.forEach((point, idx) => {
+            const isSeen = seenEpisodes.has(idx);
+            const isCurrent = trainData.history[currentStep].episode_idx === idx;
+            const hubIdx = episodeHubs[idx];
+            const hubColor = hubIdx !== undefined ? hubColors[hubIdx % hubColors.length] : '#4b5563';
+            const r = isPCAExpanded ? 6 : 4;
+
+            chartG.append("circle")
+                .attr("class", `pca-dot ${isCurrent ? 'current' : ''}`)
+                .attr("cx", xScale(point[0])).attr("cy", yScale(point[1]))
+                .attr("r", isCurrent ? r + 2 : r)
+                .attr("fill", isSeen ? hubColor : '#1f2937')
+                .attr("opacity", isSeen ? 0.8 : 0.2)
+                .attr("stroke", isCurrent ? '#fff' : (isSeen ? '#0f172a' : 'none'))
+                .attr("stroke-width", isCurrent ? 2 : 1)
+                .on("mouseenter", (event) => {
+                    event.stopPropagation();
+                    const t = document.getElementById('tooltip');
+                    document.getElementById('tooltip-name').textContent = networkData.episodes[idx].name;
+                    document.getElementById('tooltip-content').innerHTML =
+                        `Assigned to: ${hubIdx !== undefined ? `Hub ${hubIdx}` : 'Not yet'}<br>PC1: ${point[0].toFixed(2)}<br>PC2: ${point[1].toFixed(2)}`;
+                    const rect = event.target.getBoundingClientRect();
+                    const cr = document.getElementById('viz-container').getBoundingClientRect();
+                    t.style.left = (rect.right - cr.left + 10) + 'px';
+                    t.style.top = (rect.top - cr.top) + 'px';
+                    t.classList.add('visible');
+                })
+                .on("mouseleave", () => document.getElementById('tooltip').classList.remove('visible'))
+                .on("click", (event) => { event.stopPropagation(); selectEpisode(idx); });
+        });
+
+        const stepInfo = trainData.history[currentStep];
+        hubProjections.forEach((proj, hubIdx) => {
+            if (!proj) return;
+            const isWinner = stepInfo.winner === hubIdx;
+            const r = isPCAExpanded ? 12 : 8;
+            const x = xScale(proj[0]); const y = yScale(proj[1]);
+            const size = isWinner ? r + 4 : r;
+            chartG.append("polygon")
+                .attr("points", `${x},${y - size} ${x + size},${y} ${x},${y + size} ${x - size},${y}`)
+                .attr("fill", hubColors[hubIdx % hubColors.length])
+                .attr("stroke", isWinner ? '#fff' : '#0f172a')
+                .attr("stroke-width", isWinner ? 3 : 1.5);
+            if (isPCAExpanded) {
+                chartG.append("text").attr("x", x).attr("y", y + size + 12)
+                    .attr("text-anchor", "middle")
+                    .attr("fill", hubColors[hubIdx % hubColors.length])
+                    .attr("font-size", "10px").attr("font-weight", "600").text(`H${hubIdx}`);
+            }
+        });
+
+        if (trainData.num_hubs > 0) {
+            const legendG = chartSvg.append("g").attr("transform", `translate(${width - 50}, 10)`);
+            const maxHubs = isPCAExpanded ? 12 : 6;
+            for (let h = 0; h < Math.min(trainData.num_hubs, maxHubs); h++) {
+                legendG.append("circle").attr("cx", 0).attr("cy", h * (isPCAExpanded ? 16 : 12))
+                    .attr("r", isPCAExpanded ? 5 : 4).attr("fill", hubColors[h % hubColors.length]);
+                legendG.append("text").attr("x", isPCAExpanded ? 10 : 8)
+                    .attr("y", h * (isPCAExpanded ? 16 : 12) + 4).attr("fill", "#94a3b8")
+                    .attr("font-size", isPCAExpanded ? "10px" : "8px").text(`H${h}`);
+            }
+        }
+
+        document.getElementById('pcaTitle').textContent = isPCAExpanded ?
+            'Episode Similarity (PCA) - click to shrink' :
+            'Episode Similarity (PCA) - click to expand';
+    }
+
+    class UnsupervisedModel {
+        constructor(pool_sizes, vigilance, learning_rate, gain, inhibition) {
+            this.pool_sizes = pool_sizes;
+            this.total_dim = sum(pool_sizes);
+            this.vigilance = vigilance;
+            this.learning_rate = learning_rate;
+            this.gain = gain;
+            this.inhibition = inhibition;
+            this.templates = [];
+            this.pool_slices = [];
+            let start = 0;
+            for (const size of pool_sizes) { this.pool_slices.push([start, start + size]); start += size; }
+        }
+        normalize(vec) {
+            const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) + 1e-8;
+            return vec.map(v => v / norm);
+        }
+        recruitHub(x) {
+            this.templates.push(this.normalize([...x]));
+            return this.templates.length - 1;
+        }
+        computeBottomUpDrive(x) {
+            if (this.templates.length === 0) return [];
+            const xNorm = this.normalize([...x]);
+            return this.templates.map(t => {
+                let d = 0; for (let i = 0; i < t.length; i++) d += t[i] * xNorm[i];
+                return this.gain * d;
+            });
+        }
+        settleCompetition(x, numSteps = 20) {
+            const drive = this.computeBottomUpDrive(x);
+            if (drive.length === 0) return [null, null];
+            let acts = new Array(drive.length).fill(0);
+            for (let s = 0; s < numSteps; s++) {
+                const total = acts.reduce((a, b) => a + b, 0);
+                acts = acts.map((a, i) => Math.max(0, drive[i] - this.inhibition * (total - a)));
+            }
+            let winner = 0; let max = acts[0];
+            for (let i = 1; i < acts.length; i++) if (acts[i] > max) { max = acts[i]; winner = i; }
+            return [winner, acts];
+        }
+        predictFromHub(idx) { return [...this.templates[idx]]; }
+        computePoolSimilarities(x, y) {
+            const sims = [];
+            for (const [s, e] of this.pool_slices) {
+                const xp = x.slice(s, e); const yp = y.slice(s, e);
+                const xN = Math.sqrt(xp.reduce((a, b) => a + b * b, 0));
+                const yN = Math.sqrt(yp.reduce((a, b) => a + b * b, 0));
+                if (xN < 1e-8 || yN < 1e-8) sims.push(0);
+                else {
+                    let d = 0; for (let i = 0; i < xp.length; i++) d += xp[i] * yp[i];
+                    sims.push(d / (xN * yN + 1e-8));
+                }
+            }
+            return sims;
+        }
+        // Pools with no input signal (dropout) are masked false — they cannot fail vigilance.
+        computePoolMask(x) {
+            return this.pool_slices.map(([s, e]) => {
+                let n = 0;
+                for (let i = s; i < e; i++) n += x[i] * x[i];
+                return n > 1e-8;
+            });
+        }
+        snapOrRecruit(x) {
+            if (this.templates.length === 0) {
+                return { action: 'recruit', winner: this.recruitHub(x), pool_similarities: null, activities: null };
+            }
+            const [winner, activities] = this.settleCompetition(x);
+            const y = this.predictFromHub(winner);
+            const sims = this.computePoolSimilarities(x, y);
+            const mask = this.computePoolMask(x);
+            const passes = sims.every((s, i) => !mask[i] || s >= this.vigilance);
+            if (passes) {
+                this.updateHub(winner, x);
+                return { action: 'snap', winner, pool_similarities: sims, pool_mask: mask, activities };
+            } else {
+                const newHub = this.recruitHub(x);
+                return { action: 'recruit', winner: newHub, previous_winner: winner, pool_similarities: sims, pool_mask: mask, activities };
+            }
+        }
+        updateHub(idx, x) {
+            const xN = this.normalize([...x]);
+            const old = this.templates[idx];
+            this.templates[idx] = this.normalize(old.map((o, i) => (1 - this.learning_rate) * o + this.learning_rate * xN[i]));
+        }
+    }
+
+    function runTraining() {
+        if (!networkData) { updateStatus('error', 'Data not loaded'); return; }
+        const btn = document.getElementById('trainBtn');
+        btn.disabled = true; btn.textContent = 'TRAINING...';
+        updateStatus('running', 'Training model...');
+        const params = {
+            vigilance: parseFloat(document.getElementById('vigilance').value),
+            learning_rate: parseFloat(document.getElementById('learningRate').value),
+            gain: parseFloat(document.getElementById('gain').value),
+            inhibition: parseFloat(document.getElementById('inhibition').value),
+            num_passes: parseInt(document.getElementById('numPasses').value)
+        };
+        try {
+            trainData = trainModelClientSide(networkData, params);
+            pcaProjection = computePCA(networkData.X);
+            document.getElementById('scrubberSection').style.display = 'block';
+            const sc = document.getElementById('scrubber');
+            sc.max = trainData.history.length - 1; sc.value = 0;
+            currentStep = 0; updateStep(0);
+            document.getElementById('hubListSection').style.display = 'block';
+            updateHubList();
+            updateStatus('ready', `Training complete - ${trainData.num_hubs} hubs learned`);
+        } catch (e) {
+            console.error(e);
+            updateStatus('error', 'Training failed: ' + e.message);
+        }
+        btn.disabled = false; btn.textContent = 'TRAIN MODEL';
+    }
+
+    function trainModelClientSide(data, params) {
+        const model = new UnsupervisedModel(data.pool_sizes, params.vigilance, params.learning_rate, params.gain, params.inhibition);
+        const history = []; const hubHistory = [];
+        for (let pass = 0; pass < params.num_passes; pass++) {
+            for (let i = 0; i < data.X.length; i++) {
+                const result = model.snapOrRecruit(data.X[i]);
+                history.push({
+                    pass, episode_idx: i, episode_name: data.episodes[i].name,
+                    action: result.action, winner: result.winner, num_hubs: model.templates.length,
+                    pool_similarities: result.pool_similarities, pool_mask: result.pool_mask,
+                    activities: result.activities, previous_winner: result.previous_winner
+                });
+                hubHistory.push({ step: history.length - 1, templates: model.templates.map(t => [...t]) });
+            }
+        }
+        const finalAssignments = [];
+        for (let i = 0; i < data.X.length; i++) {
+            if (model.templates.length > 0) {
+                const [winner, activities] = model.settleCompetition(data.X[i]);
+                const pred = model.predictFromHub(winner);
+                const sims = model.computePoolSimilarities(data.X[i], pred);
+                finalAssignments.push({ episode_idx: i, episode_name: data.episodes[i].name, hub: winner, activities, pool_similarities: sims });
+            }
+        }
+        return {
+            history, hub_history: hubHistory, final_templates: model.templates,
+            final_assignments: finalAssignments, num_hubs: model.templates.length, vigilance: params.vigilance
+        };
+    }
+
+    function updateStep(step) {
+        if (!trainData) return;
+        step = Math.max(0, Math.min(step, trainData.history.length - 1));
+        currentStep = step;
+        document.getElementById('scrubber').value = step;
+        document.getElementById('stepLabel').textContent = `${step} / ${trainData.history.length - 1}`;
+        const stepData = trainData.history[step];
+        selectedEpisode = stepData.episode_idx;
+        updateEpisodeButtons();
+        updateStepInfo(stepData);
+        updateVisualization();
+        renderHubs(step);
+        renderPCAChart();
+    }
+
+    function updateStepInfo(stepData) {
+        const infoDiv = document.getElementById('stepInfo');
+        const simsDiv = document.getElementById('poolSimilarities');
+        infoDiv.innerHTML = `
+            <div class="info-row"><span class="label">Pass</span><span class="value">${stepData.pass + 1}</span></div>
+            <div class="info-row"><span class="label">Episode</span><span class="value">${stepData.episode_name}</span></div>
+            <div class="info-row"><span class="label">Action</span><span class="value ${stepData.action}">${stepData.action.toUpperCase()}</span></div>
+            <div class="info-row"><span class="label">Winner Hub</span><span class="value">Hub ${stepData.winner}</span></div>
+            <div class="info-row"><span class="label">Total Hubs</span><span class="value">${stepData.num_hubs}</span></div>`;
+        if (stepData.pool_similarities) {
+            const v = trainData.vigilance;
+            const mask = stepData.pool_mask || networkData.pool_names.map(() => true);
+            simsDiv.innerHTML = '<h4 style="margin: 0 0 8px 0; font-size: 0.8rem; color: #94a3b8;">Pool Similarities <span style="color:#64748b;font-weight:400;">(grey = dropout)</span></h4>' +
+                networkData.pool_names.map((name, i) => {
+                    const s = stepData.pool_similarities[i];
+                    const active = mask[i];
+                    const c = !active ? '#475569' : (s >= v ? '#22c55e' : '#ef4444');
+                    return `<div class="pool-similarity-bar" style="opacity:${active ? 1 : 0.5};">
+                        <span class="name">${name}${active ? '' : ' ·'}</span>
+                        <div class="bar">
+                            <div class="fill" style="width: ${active ? s * 100 : 0}%; background: ${c};"></div>
+                            <div class="threshold" style="left: ${v * 100}%;"></div>
+                        </div>
+                        <span class="value">${active ? s.toFixed(2) : '—'}</span>
+                    </div>`;
+                }).join('');
+        } else simsDiv.innerHTML = '';
+    }
+
+    function updateVisualization() {
+        if (!networkData) return;
+        const vec = networkData.X[selectedEpisode];
+        const nodeRadius = 9;
+        Object.entries(window.nodePositions).forEach(([key, pos]) => {
+            const a = vec[pos.globalIdx];
+            const c = a > 0.05 ? d3.interpolate("#4b5563", activationColor(a))(Math.min(1, a * 1.5)) : "#4b5563";
+            d3.select(`#node-${key}`).transition().duration(50)
+                .attr("fill", c).attr("r", a > 0.3 ? nodeRadius + 2 : nodeRadius);
+        });
+    }
+
+    function renderHubs(step) {
+        if (!trainData || !window.hubArea) return;
+        const hubData = trainData.hub_history[step];
+        const templates = hubData.templates;
+        const stepInfo = trainData.history[step];
+        const hubArea = window.hubArea;
+        const nodeGroup = window.nodeGroup;
+        const connectionGroup = window.connectionGroup;
+
+        nodeGroup.selectAll(".hub-node").remove();
+        nodeGroup.selectAll(".hub-label").remove();
+        connectionGroup.selectAll(".hub-connection").remove();
+        if (templates.length === 0) return;
+
+        const hubNodeRadius = 12;
+        const hubSpacing = 60;
+        const neededWidth = templates.length * hubSpacing + 40;
+        const actualWidth = Math.min(Math.max(neededWidth, hubArea.width), 900);
+        const actualHeight = Math.min(80 + Math.ceil(templates.length / 12) * 50, 250);
+        const poolsCenterX = hubArea.poolsStartX + hubArea.totalPoolsWidth / 2;
+        const centeredHubX = poolsCenterX - actualWidth / 2;
+
+        d3.select("#hub-area-bg").attr("x", centeredHubX).attr("width", actualWidth).attr("height", actualHeight);
+        d3.select("#hub-label").attr("x", poolsCenterX).attr("y", hubArea.y + actualHeight + 5);
+
+        const hubsPerRow = Math.floor(actualWidth / hubSpacing);
+        const startX = centeredHubX + 30;
+        const startY = hubArea.y + 20;
+        const episodeVec = networkData.X[selectedEpisode];
+        const vigilance = trainData.vigilance;
+
+        templates.forEach((template, hubIdx) => {
+            const row = Math.floor(hubIdx / hubsPerRow);
+            const col = hubIdx % hubsPerRow;
+            const hubX = startX + col * hubSpacing;
+            const hubY = startY + row * 45;
+            const isWinner = stepInfo.winner === hubIdx;
+            const sims = computePoolSimilaritiesForDisplay(episodeVec, template, networkData.pool_sizes);
+            const avg = sims.reduce((a, b) => a + b, 0) / sims.length;
+
+            nodeGroup.append("circle")
+                .attr("class", `node hub-node ${isWinner ? 'winner' : ''}`)
+                .attr("cx", hubX).attr("cy", hubY)
+                .attr("r", isWinner ? 16 : hubNodeRadius)
+                .attr("fill", activationColor(avg))
+                .on("mouseenter", (event) => {
+                    const t = document.getElementById('tooltip');
+                    document.getElementById('tooltip-name').textContent = `Hub ${hubIdx} (Sim: ${(avg * 100).toFixed(0)}%)`;
+                    let html = '<div style="margin-bottom: 8px;">';
+                    networkData.pool_names.forEach((p, i) => {
+                        const s = sims[i];
+                        const passed = s >= vigilance;
+                        const bc = passed ? '#22c55e' : '#ef4444';
+                        html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0;font-size:0.7rem;">
+                            <span style="width:60px;color:#94a3b8;">${p}</span>
+                            <div style="flex:1;height:10px;background:#334155;border-radius:5px;position:relative;">
+                                <div style="height:100%;width:${s * 100}%;background:${bc};border-radius:5px;"></div>
+                                <div style="position:absolute;top:0;bottom:0;left:${vigilance * 100}%;width:2px;background:#fff;"></div>
+                            </div>
+                            <span style="width:30px;text-align:right;">${(s * 100).toFixed(0)}%</span>
+                        </div>`;
+                    });
+                    html += '</div>';
+                    const top = template.map((w, i) => ({ name: networkData.featureNames[i], w })).sort((a, b) => b.w - a.w).slice(0, 5);
+                    html += '<div style="margin-bottom:6px;font-size:0.7rem;color:#64748b;">Top features:</div>';
+                    top.forEach(f => {
+                        const I = Math.min(1, f.w * 2);
+                        html += `<div style="padding:2px 4px;background:rgba(251,191,36,${I});border-radius:2px;margin:2px 0;color:${I > 0.5 ? '#1e293b' : '#e2e8f0'};font-size:0.7rem;">${f.name}: ${f.w.toFixed(2)}</div>`;
+                    });
+                    const assigned = trainData.final_assignments.filter(a => a.hub === hubIdx).map(a => a.episode_name);
+                    html += `<div style="padding-top:6px;border-top:1px solid #334155;font-size:0.7rem;">Items: ${assigned.slice(0, 6).join(', ') || 'None'}${assigned.length > 6 ? '…' : ''}</div>`;
+                    document.getElementById('tooltip-content').innerHTML = html;
+                    const rect = event.target.getBoundingClientRect();
+                    const cr = document.getElementById('viz-container').getBoundingClientRect();
+                    t.style.left = (rect.right - cr.left + 10) + 'px';
+                    t.style.top = (rect.top - cr.top) + 'px';
+                    t.classList.add('visible');
+                })
+                .on("mouseleave", () => document.getElementById('tooltip').classList.remove('visible'));
+
+            nodeGroup.append("text").attr("class", "node-label hub-label")
+                .attr("x", hubX).attr("y", hubY + hubNodeRadius + 12)
+                .attr("text-anchor", "middle").text(`H${hubIdx}`)
+                .style("font-size", "9px");
+
+            if (isWinner) {
+                const top = template.map((w, i) => ({ idx: i, w })).sort((a, b) => b.w - a.w).slice(0, 6);
+                top.forEach(({ idx, w }) => {
+                    if (w > 0.05) {
+                        let cum = 0;
+                        for (let p = 0; p < networkData.pool_sizes.length; p++) {
+                            const ps = networkData.pool_sizes[p];
+                            if (idx < cum + ps) {
+                                const fi = idx - cum;
+                                const np = window.nodePositions[`pool-${networkData.pool_names[p]}-${fi}`];
+                                if (np) {
+                                    const midY = (np.y + hubY) / 2;
+                                    connectionGroup.append("path")
+                                        .attr("class", "connection hub-connection positive highlighted")
+                                        .attr("d", `M${np.x},${np.y} Q${np.x},${midY} ${hubX},${hubY}`)
+                                        .attr("stroke-width", w * 5)
+                                        .attr("stroke-opacity", 0.4 + w * 0.6);
+                                }
+                                break;
+                            }
+                            cum += ps;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    function updateHubList() {
+        if (!trainData) return;
+        const container = document.getElementById('hubList');
+        const groups = {};
+        trainData.final_assignments.forEach(a => {
+            if (a.hub !== null) {
+                if (!groups[a.hub]) groups[a.hub] = [];
+                groups[a.hub].push(a.episode_name);
+            }
+        });
+        container.innerHTML = Object.entries(groups).map(([hub, episodes]) =>
+            `<div class="hub-item">
+                <span class="hub-id" style="color: ${hubColors[hub % 10]}">Hub ${hub}</span>
+                <span class="members">${episodes.length > 3 ? episodes.slice(0, 3).join(', ') + ` +${episodes.length - 3}` : episodes.join(', ')}</span>
+            </div>`).join('');
+    }
+
+    function playbackStep(d) { updateStep(currentStep + d); }
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+        if (isPlaying) {
+            btn.textContent = 'Pause';
+            playInterval = setInterval(() => {
+                if (currentStep >= trainData.history.length - 1) currentStep = 0;
+                updateStep(currentStep + 1);
+            }, 200);
+        } else {
+            btn.textContent = 'Play';
+            clearInterval(playInterval);
+        }
+    }
+    function updateStatus(type, msg) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = msg;
+    }
+
+    window.addEventListener('resize', () => {
+        if (networkData) {
+            renderNetwork();
+            if (trainData) { updateStep(currentStep); renderPCAChart(); }
+        }
+    });
+
+    init();
+</script>
+
+</body>
+</html>

@@ -6,6 +6,13 @@ const app = express();
 const port = 3000;
 
 app.use(express.json());
+// Disable caching during development so HTML/CSS/JS changes are always fresh.
+app.use((req, res, next) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Get initial network structure
@@ -171,5 +178,7 @@ app.listen(port, () => {
     console.log(`  - IAC Visualizer:    http://localhost:${port}/iac.html`);
     console.log(`  - Rumelhart:         http://localhost:${port}/rumelhart.html`);
     console.log(`  - Unsupervised:      http://localhost:${port}/unsupervised.html`);
-    console.log(`  - Unsupervised CSV:  http://localhost:${port}/unsupervised_csv.html\n`);
+    console.log(`  - Unsupervised CSV:  http://localhost:${port}/unsupervised_csv.html`);
+    console.log(`  - Sensory Dropout:   http://localhost:${port}/sensory_dropout.html`);
+    console.log(`  - Hierarchical ART:  http://localhost:${port}/hierarchical_art.html\n`);
 });

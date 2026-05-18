@@ -198,7 +198,7 @@
         .info-row .value { color: #e2e8f0; font-weight: 500; }
         .info-row .value.snap { color: #22c55e; }
         .info-row .value.recruit { color: #8b5cf6; }
-        .episode-list { background: #1e293b; padding: 12px; border-radius: 6px; max-height: 120px; overflow-y: auto; }
+        .episode-list { background: #1e293b; padding: 12px; border-radius: 6px; max-height: 55vh; overflow-y: auto; }
         .episode-btn {
             display: inline-block;
             padding: 4px 8px;
@@ -329,7 +329,7 @@
     <div class="params-grid">
         <div class="param-group">
             <label>Vigilance</label>
-            <input type="number" id="vigilance" value="0.6" step="0.05" min="0" max="1">
+            <input type="number" id="vigilance" value="0.6" step="any" data-arrow-step="0.05" min="0" max="1">
         </div>
         <div class="param-group">
             <label>Hub LR</label>
@@ -1459,5 +1459,6 @@ ball1,green,circle,large,rough`;
     init();
 </script>
 
+<script src="/nav.js"></script>
 </body>
 </html>

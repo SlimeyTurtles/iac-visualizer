@@ -1,0 +1,1543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hierarchical ART (Multi-Vigilance)</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/sensory_data.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: #0a0f1a;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 360px;
+            background: #111827;
+            padding: 24px;
+            border-right: 1px solid #1f2937;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow-y: auto;
+            scrollbar-width: none;
+        }
+        #sidebar::-webkit-scrollbar { display: none; }
+
+        #sidebar h2 {
+            margin: 0 0 4px 0;
+            font-size: 1.4rem;
+            color: #f8fafc;
+            border-bottom: 2px solid #f59e0b;
+            padding-bottom: 12px;
+        }
+        .subtitle {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin: -4px 0 6px 0;
+            line-height: 1.4;
+        }
+
+        .section-header {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #f59e0b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 12px 0 6px 0;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .param-group { display: flex; flex-direction: column; gap: 6px; }
+        .param-group label { font-size: 0.85rem; color: #94a3b8; font-weight: 500; }
+        .param-group input[type="number"] {
+            width: 100%;
+            padding: 9px 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #f1f5f9;
+            font-size: 0.95rem;
+        }
+
+        .level-box {
+            background: #0f172a;
+            border: 1px solid #1f2937;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        .level-box.coarse { border-left: 3px solid #38bdf8; }
+        .level-box.mid    { border-left: 3px solid #f59e0b; }
+        .level-box.fine   { border-left: 3px solid #f43f5e; }
+        .level-box h4 {
+            margin: 0 0 6px 0;
+            font-size: 0.85rem;
+            color: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .level-box h4 .tag {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #94a3b8;
+        }
+        .level-box .desc {
+            font-size: 0.72rem;
+            color: #64748b;
+            margin: 0 0 8px 0;
+            line-height: 1.4;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover { transform: translateY(-1px); }
+        .btn-primary:disabled { background: #374151; cursor: not-allowed; transform: none; }
+
+        .scrubber-section { background: #1e293b; padding: 14px; border-radius: 8px; }
+        .scrubber-section label { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.85rem; }
+        .scrubber-section #stepLabel { color: #f59e0b; font-weight: 600; }
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #334155;
+            border-radius: 3px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px; height: 18px;
+            background: #f59e0b;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .playback-controls { display: flex; gap: 6px; margin-top: 10px; }
+        .playback-controls button {
+            flex: 1;
+            padding: 8px;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #e2e8f0;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .episode-list {
+            background: #1e293b;
+            padding: 10px;
+            border-radius: 6px;
+            max-height: 55vh;
+            overflow-y: auto;
+        }
+        .episode-btn {
+            display: inline-block;
+            padding: 3px 7px;
+            background: #334155;
+            border: none;
+            border-radius: 4px;
+            color: #e2e8f0;
+            font-size: 0.7rem;
+            cursor: pointer;
+            margin: 2px;
+        }
+        .episode-btn.active { background: #f59e0b; color: #1e293b; }
+
+        .status {
+            font-size: 0.8rem;
+            color: #64748b;
+            text-align: center;
+            padding: 6px;
+        }
+        .status.running { color: #fbbf24; }
+        .status.ready   { color: #22c55e; }
+        .status.error   { color: #ef4444; }
+
+        #main-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #viz-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        #canvas { width: 100%; height: 100%; }
+
+        .node {
+            cursor: pointer;
+            stroke: #1e293b;
+            stroke-width: 2px;
+            transition: stroke 0.15s, stroke-width 0.15s;
+        }
+        .node:hover { stroke: #fbbf24; stroke-width: 3px; }
+        .node.winner { stroke: #f59e0b; stroke-width: 4px; }
+        .node.new-recruit {
+            stroke: #22c55e;
+            stroke-width: 4px;
+            stroke-dasharray: 4 3;
+        }
+        .node-label {
+            fill: #cbd5e1;
+            font-size: 10px;
+            pointer-events: none;
+            font-weight: 500;
+        }
+        .layer-label {
+            fill: #64748b;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .layer-title-strong {
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .layer-bg {
+            fill: #111827;
+            stroke: #1f2937;
+            stroke-width: 1px;
+            rx: 12;
+        }
+        .layer-bg.coarse { stroke: #1e3a5f; }
+        .layer-bg.mid    { stroke: #5c3d12; }
+        .layer-bg.fine   { stroke: #5c1f2d; }
+
+        .connection { fill: none; stroke-opacity: 0.3; pointer-events: none; }
+        .connection.highlighted { stroke-opacity: 0.9; stroke-width: 2; }
+
+        .tooltip {
+            position: absolute;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 1000;
+            min-width: 200px;
+            max-width: 360px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        .tooltip.visible { opacity: 1; }
+        .tooltip-header {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #f1f5f9;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #334155;
+        }
+        .tooltip-content { font-size: 0.8rem; color: #94a3b8; }
+
+        .info-card {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 320px;
+            max-height: calc(100vh - 60px);
+            background: #111827;
+            padding: 16px;
+            border-radius: 10px;
+            border: 1px solid #1f2937;
+            z-index: 100;
+            overflow-y: auto;
+        }
+        .info-card h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 0.8rem;
+            border-bottom: 1px solid #1f2937;
+        }
+        .info-row .label { color: #94a3b8; }
+        .info-row .value { color: #e2e8f0; font-weight: 500; }
+        .info-row .value.snap    { color: #22c55e; }
+        .info-row .value.recruit { color: #f59e0b; }
+
+        .hierarchy-display {
+            margin-top: 12px;
+        }
+        .hierarchy-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            background: #1e293b;
+        }
+        .hierarchy-row.coarse { border-left: 3px solid #38bdf8; }
+        .hierarchy-row.mid    { border-left: 3px solid #f59e0b; }
+        .hierarchy-row.fine   { border-left: 3px solid #f43f5e; }
+        .hierarchy-row .level-name {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            width: 60px;
+        }
+        .hierarchy-row .hub-pill {
+            background: #334155;
+            color: #f1f5f9;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+        .hierarchy-row .action {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-left: auto;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .hierarchy-row .action.snap    { background: #052e1c; color: #22c55e; }
+        .hierarchy-row .action.recruit { background: #2e1b05; color: #f59e0b; }
+
+        .reset-view-btn {
+            position: absolute;
+            top: 20px;
+            right: 76px;
+            padding: 8px 16px;
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            cursor: pointer;
+            z-index: 100;
+        }
+        .reset-view-btn:hover { background: #475569; border-color: #f59e0b; }
+
+        .legend-panel {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #111827;
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            font-size: 0.78rem;
+        }
+        .legend-panel h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.78rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .legend-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0;
+        }
+        .legend-row .swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+        }
+
+        .group-summary {
+            margin-top: 12px;
+            background: #1e293b;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 0.72rem;
+        }
+        .group-summary h5 {
+            margin: 0 0 6px 0;
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .group-summary .hub-line {
+            color: #cbd5e1;
+            margin: 3px 0;
+            line-height: 1.3;
+        }
+
+        /* Multi-PCA panel: 3 charts (one per layer) */
+        .pca-multi {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: #111827;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #1f2937;
+            z-index: 100;
+            display: none;
+            transition: width 0.3s ease, height 0.3s ease;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .pca-multi.visible { display: block; }
+        .pca-multi-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .pca-multi-title {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+        .pca-expand-btn {
+            padding: 4px 10px;
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 4px;
+            color: #e2e8f0;
+            font-size: 0.72rem;
+            cursor: pointer;
+        }
+        .pca-expand-btn:hover { background: #475569; border-color: #f59e0b; }
+        .pca-tabs {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .pca-tab {
+            flex: 1;
+            padding: 6px 10px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #cbd5e1;
+            font-size: 0.75rem;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s;
+        }
+        .pca-tab.active {
+            color: #0f172a;
+            font-weight: 600;
+        }
+        .pca-tab:hover { border-color: #475569; }
+
+        /* Collapsed: one chart visible, tabs to switch */
+        .pca-multi.collapsed { width: 280px; }
+        .pca-multi.collapsed .pca-chart-grid { display: block; }
+        .pca-multi.collapsed .pca-chart-cell { display: none; }
+        .pca-multi.collapsed .pca-chart-cell.active { display: block; }
+        .pca-multi.collapsed .pca-chart-cell svg { width: 252px; height: 220px; }
+
+        /* Expanded: all three charts visible side-by-side */
+        .pca-multi.expanded {
+            width: min(1020px, calc(100vw - 420px));
+        }
+        .pca-multi.expanded .pca-tabs { display: none; }
+        .pca-multi.expanded .pca-chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+        }
+        .pca-multi.expanded .pca-chart-cell { display: block; }
+        .pca-multi.expanded .pca-chart-cell svg {
+            width: 100%;
+            height: 320px;
+        }
+        .pca-chart-cell {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid #1f2937;
+        }
+        .pca-chart-cell.coarse { border-top: 3px solid #38bdf8; }
+        .pca-chart-cell.mid    { border-top: 3px solid #f59e0b; }
+        .pca-chart-cell.fine   { border-top: 3px solid #f43f5e; }
+        .pca-chart-cell h5 {
+            margin: 0 0 6px 0;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            display: flex;
+            justify-content: space-between;
+        }
+        .pca-chart-cell h5 .layer-name { color: #f1f5f9; text-transform: uppercase; letter-spacing: 1px; }
+        .pca-chart-cell h5 .layer-stats { color: #64748b; font-weight: 400; }
+        .pca-dot { transition: r 0.15s; }
+        .pca-dot:hover { cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>Hierarchical ART</h2>
+    <div class="subtitle">Three ART layers at increasing vigilance. Low vigilance &rarr; broad categories. High vigilance &rarr; fine-grained subtypes. Each episode is independently classified at every level.</div>
+
+    <div class="section-header">Layers</div>
+
+    <div class="level-box coarse">
+        <h4>Coarse Level <span class="tag">Broad</span></h4>
+        <div class="desc">Loose match required. Forms super-categories.</div>
+        <div class="param-group">
+            <label>Vigilance</label>
+            <input type="number" id="vigilance_coarse" value="0.55" step="any" data-arrow-step="0.05" min="0" max="1">
+        </div>
+    </div>
+
+    <div class="level-box mid">
+        <h4>Mid Level <span class="tag">Category</span></h4>
+        <div class="desc">Medium match. Typically separates birds/fish/plants etc.</div>
+        <div class="param-group">
+            <label>Vigilance</label>
+            <input type="number" id="vigilance_mid" value="0.75" step="any" data-arrow-step="0.05" min="0" max="1">
+        </div>
+    </div>
+
+    <div class="level-box fine">
+        <h4>Fine Level <span class="tag">Specific</span></h4>
+        <div class="desc">Strict match. Separates individual concepts.</div>
+        <div class="param-group">
+            <label>Vigilance</label>
+            <input type="number" id="vigilance_fine" value="0.9" step="any" data-arrow-step="0.05" min="0" max="1">
+        </div>
+    </div>
+
+    <div class="section-header">Shared Hyperparameters</div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="param-group">
+            <label>Learning Rate</label>
+            <input type="number" id="learningRate" value="0.1" step="0.01" min="0.01" max="1">
+        </div>
+        <div class="param-group">
+            <label>Gain</label>
+            <input type="number" id="gain" value="1.0" step="0.1" min="0.1" max="5">
+        </div>
+        <div class="param-group">
+            <label>Inhibition</label>
+            <input type="number" id="inhibition" value="0.2" step="0.05" min="0" max="1">
+        </div>
+        <div class="param-group">
+            <label>Passes</label>
+            <input type="number" id="numPasses" value="2" min="1" max="10">
+        </div>
+    </div>
+
+    <button id="trainBtn" class="btn-primary" onclick="runTraining()">TRAIN HIERARCHY</button>
+
+    <div class="scrubber-section" id="scrubberSection" style="display: none;">
+        <label>
+            <span>Training Step</span>
+            <span id="stepLabel">0 / 0</span>
+        </label>
+        <input type="range" id="scrubber" min="0" max="0" value="0" oninput="updateStep(parseInt(this.value))">
+        <div class="playback-controls">
+            <button onclick="playbackStep(-5)">-5</button>
+            <button onclick="playbackStep(-1)">-1</button>
+            <button onclick="togglePlay()" id="playBtn">Play</button>
+            <button onclick="playbackStep(1)">+1</button>
+            <button onclick="playbackStep(5)">+5</button>
+        </div>
+    </div>
+
+    <div class="section-header">Episodes</div>
+
+    <div class="episode-list">
+        <div id="episodeButtons"></div>
+    </div>
+
+    <div id="status" class="status">Click TRAIN HIERARCHY to start</div>
+</div>
+
+<div id="main-container">
+    <div id="viz-container">
+        <svg id="canvas"></svg>
+        <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+
+        <div id="tooltip" class="tooltip">
+            <div class="tooltip-header" id="tooltip-name"></div>
+            <div class="tooltip-content" id="tooltip-content"></div>
+        </div>
+
+        <div class="info-card">
+            <h4>Step Information</h4>
+            <div id="stepInfo">Train the model to see hierarchical assignments.</div>
+            <div id="hierarchyDisplay" class="hierarchy-display"></div>
+            <div id="groupSummary"></div>
+        </div>
+
+        <div class="legend-panel">
+            <h4>Layers</h4>
+            <div class="legend-row"><div class="swatch" style="background:#38bdf8;"></div><span>Coarse (super-categories)</span></div>
+            <div class="legend-row"><div class="swatch" style="background:#f59e0b;"></div><span>Mid (categories)</span></div>
+            <div class="legend-row"><div class="swatch" style="background:#f43f5e;"></div><span>Fine (specific)</span></div>
+            <div style="margin-top:10px;padding-top:8px;border-top:1px solid #334155;font-size:0.7rem;color:#94a3b8;">
+                <span style="color:#22c55e;">●</span> snap (existing hub)<br>
+                <span style="color:#f59e0b;">●</span> recruit (new hub)
+            </div>
+        </div>
+
+        <div id="pcaMulti" class="pca-multi collapsed">
+            <div class="pca-multi-header">
+                <span class="pca-multi-title">Episode Similarity (PCA)</span>
+                <button class="pca-expand-btn" id="pcaExpandBtn" onclick="togglePCAExpand()">Expand</button>
+            </div>
+            <div class="pca-tabs" id="pcaTabs">
+                <button class="pca-tab active" data-level="coarse" onclick="selectPCATab('coarse')" style="background:#38bdf822;border-color:#38bdf8;color:#38bdf8;">Coarse</button>
+                <button class="pca-tab" data-level="mid" onclick="selectPCATab('mid')">Mid</button>
+                <button class="pca-tab" data-level="fine" onclick="selectPCATab('fine')">Fine</button>
+            </div>
+            <div class="pca-chart-grid">
+                <div class="pca-chart-cell coarse active" data-level="coarse">
+                    <h5><span class="layer-name">Coarse</span><span class="layer-stats" id="pca-stats-coarse"></span></h5>
+                    <svg id="pca-chart-coarse"></svg>
+                </div>
+                <div class="pca-chart-cell mid" data-level="mid">
+                    <h5><span class="layer-name">Mid</span><span class="layer-stats" id="pca-stats-mid"></span></h5>
+                    <svg id="pca-chart-mid"></svg>
+                </div>
+                <div class="pca-chart-cell fine" data-level="fine">
+                    <h5><span class="layer-name">Fine</span><span class="layer-stats" id="pca-stats-fine"></span></h5>
+                    <svg id="pca-chart-fine"></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+    const LEVEL_COLORS = { coarse: '#38bdf8', mid: '#f59e0b', fine: '#f43f5e' };
+    const LEVEL_NAMES  = { coarse: 'Coarse',  mid: 'Mid',      fine: 'Fine'   };
+    const LEVEL_ORDER  = ['coarse', 'mid', 'fine'];
+
+    let networkData = null;
+    let trainData = null;
+    let selectedEpisode = 0;
+    let currentStep = 0;
+    let isPlaying = false;
+    let playInterval = null;
+
+    // PCA state - one shared input projection, separate hub projections per level
+    let pcaProjection = null;
+    let cachedPCA = null;
+    let pcaExpanded = false;
+    let pcaActiveTab = 'coarse';
+
+    const svg = d3.select("#canvas");
+    let g;
+    let zoomBehavior;
+
+    const activationColor = d3.scaleSequential().domain([0, 1]).interpolator(d3.interpolateYlOrRd);
+    const hubPalette = d3.schemeCategory10;
+
+    function init() {
+        setupZoom();
+        loadDataset();
+    }
+
+    function setupZoom() {
+        zoomBehavior = d3.zoom().scaleExtent([0.1, 3]).on("zoom", (event) => {
+            g.attr("transform", event.transform);
+        });
+        svg.call(zoomBehavior);
+        g = svg.append("g");
+    }
+
+    function resetView() {
+        svg.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    function parseCSV(csvText) {
+        const lines = csvText.trim().split('\n');
+        const header = lines[0].split(',').map(s => s.trim());
+        const columnNames = header.slice(1);
+
+        const rawData = [];
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            const parts = line.split(',').map(s => s.trim());
+            rawData.push({ name: parts[0], values: parts.slice(1) });
+        }
+
+        const episodes = [];
+        const X = [];
+        rawData.forEach(row => {
+            episodes.push({ name: row.name });
+            const values = row.values.map(v => parseFloat(v) || 0);
+            while (values.length < columnNames.length) values.push(0);
+            X.push(values);
+        });
+
+        const poolOrder = [];
+        const poolMap = {};
+        const featureNames = [];
+        columnNames.forEach(col => {
+            const ci = col.indexOf(':');
+            const p = ci > 0 ? col.substring(0, ci) : 'Features';
+            const f = ci > 0 ? col.substring(ci + 1) : col;
+            if (!poolMap[p]) { poolMap[p] = []; poolOrder.push(p); }
+            poolMap[p].push(f);
+            featureNames.push(col);
+        });
+
+        const pool_names = poolOrder;
+        const pool_sizes = poolOrder.map(p => poolMap[p].length);
+        const features = {};
+        poolOrder.forEach(p => features[p] = poolMap[p]);
+
+        return { pool_sizes, pool_names, features, episodes, X, featureNames };
+    }
+
+    function loadDataset() {
+        try {
+            networkData = parseCSV(window.SENSORY_DROPOUT_CSV);
+            renderNetwork();
+            updateEpisodeButtons();
+            updateStatus('ready', `${networkData.episodes.length} samples ready - press TRAIN HIERARCHY`);
+        } catch (e) {
+            console.error(e);
+            updateStatus('error', 'Failed to load dataset: ' + e.message);
+        }
+    }
+
+    function sum(arr) { return arr.reduce((a, b) => a + b, 0); }
+
+    function updateEpisodeButtons() {
+        const c = document.getElementById('episodeButtons');
+        if (!networkData) { c.innerHTML = ''; return; }
+        c.innerHTML = networkData.episodes.map((ep, i) =>
+            `<button class="episode-btn ${i === selectedEpisode ? 'active' : ''}" onclick="selectEpisode(${i})">${ep.name}</button>`
+        ).join('');
+    }
+    function selectEpisode(idx) {
+        selectedEpisode = idx;
+        updateEpisodeButtons();
+        updateVisualization();
+    }
+
+    function renderNetwork() {
+        if (!networkData) return;
+        const container = document.getElementById('viz-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        svg.attr("width", width).attr("height", height);
+        g.selectAll("*").remove();
+
+        const pool_names = networkData.pool_names;
+        const pool_sizes = networkData.pool_sizes;
+        const features = networkData.features;
+
+        const poolWidth = 140;
+        const poolSpacing = 22;
+        const nodeSpacing = 22;
+        const nodeRadius = 8;
+        const boxPadding = 12;
+        const circleLeftOffset = 22;
+        const startX = 380;
+        const startY = 32;
+
+        const maxPoolSize = Math.max(...pool_sizes);
+        const maxPoolHeight = boxPadding + (maxPoolSize - 1) * nodeSpacing + boxPadding;
+        const totalPoolsWidth = pool_names.length * poolWidth + (pool_names.length - 1) * poolSpacing;
+
+        const poolPositions = {};
+        const nodePositions = {};
+
+        pool_names.forEach((poolName, poolIdx) => {
+            const poolFeatures = features[poolName];
+            const poolSize = pool_sizes[poolIdx];
+            const poolX = startX + poolIdx * (poolWidth + poolSpacing);
+            poolPositions[poolName] = { x: poolX, y: startY, width: poolWidth, height: maxPoolHeight };
+            const totalNodesHeight = (poolSize - 1) * nodeSpacing;
+            const nodeStartY = startY + boxPadding + (maxPoolHeight - 2 * boxPadding - totalNodesHeight) / 2;
+            poolFeatures.forEach((feature, fi) => {
+                const globalIdx = sum(pool_sizes.slice(0, poolIdx)) + fi;
+                nodePositions[`pool-${poolName}-${fi}`] = {
+                    x: poolX + circleLeftOffset,
+                    y: nodeStartY + fi * nodeSpacing,
+                    pool: poolName, feature, featureIdx: fi, globalIdx
+                };
+            });
+        });
+
+        // Pool backgrounds
+        g.selectAll(".layer-bg.pool")
+            .data(pool_names).enter().append("rect")
+            .attr("class", "layer-bg pool")
+            .attr("x", d => poolPositions[d].x).attr("y", d => poolPositions[d].y)
+            .attr("width", d => poolPositions[d].width).attr("height", d => poolPositions[d].height);
+
+        g.selectAll(".layer-label.pool")
+            .data(pool_names).enter().append("text")
+            .attr("class", "layer-label pool")
+            .attr("x", d => poolPositions[d].x + poolPositions[d].width / 2)
+            .attr("y", d => poolPositions[d].y - 16)
+            .attr("text-anchor", "middle").text(d => d);
+
+        // Hub strips (3 horizontal rows below the pool columns) - rendered
+        // BEFORE node/connection groups so hub circles paint over the strip
+        // backgrounds (z-order in SVG is document order).
+        const hubAreaY = startY + maxPoolHeight + 36;
+        const stripGap = 14;
+        const minStripHeight = 84;
+        const hubAreaWidth = Math.max(totalPoolsWidth, 400);
+        const hubAreaX = startX;
+
+        const stripBgGroup = g.append("g").attr("class", "strip-bgs");
+        const stripPositions = {};
+        LEVEL_ORDER.forEach((level, i) => {
+            const y = hubAreaY + i * (minStripHeight + stripGap);
+            stripPositions[level] = { x: hubAreaX, y, width: hubAreaWidth, height: minStripHeight };
+
+            stripBgGroup.append("rect")
+                .attr("class", `layer-bg ${level}`)
+                .attr("id", `strip-bg-${level}`)
+                .attr("x", hubAreaX).attr("y", y)
+                .attr("width", hubAreaWidth).attr("height", minStripHeight);
+
+            stripBgGroup.append("text")
+                .attr("class", "layer-label layer-title-strong")
+                .attr("id", `strip-title-${level}`)
+                .attr("x", hubAreaX + 14).attr("y", y + 20)
+                .attr("fill", LEVEL_COLORS[level])
+                .text(`${LEVEL_NAMES[level].toUpperCase()} HUBS`);
+
+            stripBgGroup.append("text")
+                .attr("id", `strip-info-${level}`)
+                .attr("x", hubAreaX + hubAreaWidth - 14).attr("y", y + 20)
+                .attr("fill", "#64748b")
+                .attr("text-anchor", "end")
+                .style("font-size", "11px")
+                .text("");
+        });
+
+        // Connections render above strip backgrounds but below nodes.
+        const connectionGroup = g.append("g").attr("class", "connections");
+        const nodeGroup = g.append("g").attr("class", "nodes");
+        const allPoolNodes = Object.entries(nodePositions).map(([k, p]) => ({ key: k, ...p }));
+
+        nodeGroup.selectAll(".node.pool-node")
+            .data(allPoolNodes).enter().append("circle")
+            .attr("class", "node pool-node")
+            .attr("id", d => `node-${d.key}`)
+            .attr("cx", d => d.x).attr("cy", d => d.y)
+            .attr("r", nodeRadius)
+            .attr("fill", "#4b5563")
+            .on("mouseenter", (event, d) => handlePoolNodeHover(event, d, true))
+            .on("mouseleave", (event, d) => handlePoolNodeHover(event, d, false));
+
+        const maxTextWidth = poolWidth - circleLeftOffset - nodeRadius - 10;
+        const maxChars = Math.floor(maxTextWidth / 6);
+        nodeGroup.selectAll(".node-label.pool")
+            .data(allPoolNodes).enter().append("text")
+            .attr("class", "node-label pool")
+            .attr("x", d => d.x + nodeRadius + 5)
+            .attr("y", d => d.y + 4)
+            .text(d => d.feature.length > maxChars ? d.feature.slice(0, maxChars - 1) + '…' : d.feature)
+            .style("font-size", "10px");
+
+        window.nodePositions = nodePositions;
+        window.poolPositions = poolPositions;
+        window.stripPositions = stripPositions;
+        window.connectionGroup = connectionGroup;
+        window.nodeGroup = nodeGroup;
+        window.layout = {
+            startX, startY,
+            totalPoolsWidth, maxPoolHeight,
+            hubAreaY, hubAreaWidth, minStripHeight, stripGap
+        };
+    }
+
+    function handlePoolNodeHover(event, d, entering) {
+        const t = document.getElementById('tooltip');
+        if (entering) {
+            document.getElementById('tooltip-name').textContent = d.feature;
+            let content = `Pool: ${d.pool}`;
+            if (d.globalIdx !== undefined && networkData.X) {
+                content += `<br>Activation: ${networkData.X[selectedEpisode][d.globalIdx].toFixed(2)}`;
+            }
+            document.getElementById('tooltip-content').innerHTML = content;
+            const r = event.target.getBoundingClientRect();
+            const c = document.getElementById('viz-container').getBoundingClientRect();
+            t.style.left = (r.right - c.left + 10) + 'px';
+            t.style.top = (r.top - c.top) + 'px';
+            t.classList.add('visible');
+        } else t.classList.remove('visible');
+    }
+
+    function computePoolSimilarities(x, y, pool_slices) {
+        const sims = [];
+        for (const [s, e] of pool_slices) {
+            const xp = x.slice(s, e); const yp = y.slice(s, e);
+            const xN = Math.sqrt(xp.reduce((a, b) => a + b * b, 0));
+            const yN = Math.sqrt(yp.reduce((a, b) => a + b * b, 0));
+            if (xN < 1e-8 || yN < 1e-8) sims.push(0);
+            else {
+                let d = 0; for (let i = 0; i < xp.length; i++) d += xp[i] * yp[i];
+                sims.push(d / (xN * yN + 1e-8));
+            }
+        }
+        return sims;
+    }
+
+    class ARTLayer {
+        constructor(pool_sizes, vigilance, learning_rate, gain, inhibition) {
+            this.pool_sizes = pool_sizes;
+            this.vigilance = vigilance;
+            this.learning_rate = learning_rate;
+            this.gain = gain;
+            this.inhibition = inhibition;
+            this.templates = [];
+            this.pool_slices = [];
+            let s = 0;
+            for (const sz of pool_sizes) { this.pool_slices.push([s, s + sz]); s += sz; }
+        }
+        normalize(v) { const n = Math.sqrt(v.reduce((a, b) => a + b * b, 0)) + 1e-8; return v.map(x => x / n); }
+        recruit(x) { this.templates.push(this.normalize([...x])); return this.templates.length - 1; }
+        drive(x) {
+            if (!this.templates.length) return [];
+            const xN = this.normalize([...x]);
+            return this.templates.map(t => {
+                let d = 0; for (let i = 0; i < t.length; i++) d += t[i] * xN[i];
+                return this.gain * d;
+            });
+        }
+        compete(x, steps = 20) {
+            const d = this.drive(x);
+            if (!d.length) return [null, null];
+            let a = new Array(d.length).fill(0);
+            for (let s = 0; s < steps; s++) {
+                const total = a.reduce((s, v) => s + v, 0);
+                a = a.map((v, i) => Math.max(0, d[i] - this.inhibition * (total - v)));
+            }
+            let w = 0, m = a[0];
+            for (let i = 1; i < a.length; i++) if (a[i] > m) { m = a[i]; w = i; }
+            return [w, a];
+        }
+        poolMask(x) {
+            return this.pool_slices.map(([s, e]) => {
+                let n = 0;
+                for (let i = s; i < e; i++) n += x[i] * x[i];
+                return n > 1e-8;
+            });
+        }
+        process(x) {
+            if (!this.templates.length) {
+                return { action: 'recruit', winner: this.recruit(x), pool_similarities: null, pool_mask: null };
+            }
+            const [winner] = this.compete(x);
+            const tpl = this.templates[winner];
+            const sims = computePoolSimilarities(x, tpl, this.pool_slices);
+            const mask = this.poolMask(x);
+            // Pools with no input signal (dropout) can't fail vigilance.
+            const passes = sims.every((s, i) => !mask[i] || s >= this.vigilance);
+            if (passes) {
+                const xN = this.normalize([...x]);
+                this.templates[winner] = this.normalize(
+                    tpl.map((o, i) => (1 - this.learning_rate) * o + this.learning_rate * xN[i])
+                );
+                return { action: 'snap', winner, pool_similarities: sims, pool_mask: mask };
+            } else {
+                return { action: 'recruit', winner: this.recruit(x), previous_winner: winner, pool_similarities: sims, pool_mask: mask };
+            }
+        }
+    }
+
+    function runTraining() {
+        if (!networkData) return;
+        const btn = document.getElementById('trainBtn');
+        btn.disabled = true; btn.textContent = 'TRAINING...';
+        updateStatus('running', 'Training 3 layers...');
+        const shared = {
+            learning_rate: parseFloat(document.getElementById('learningRate').value),
+            gain: parseFloat(document.getElementById('gain').value),
+            inhibition: parseFloat(document.getElementById('inhibition').value),
+            num_passes: parseInt(document.getElementById('numPasses').value)
+        };
+        const vigilances = {
+            coarse: parseFloat(document.getElementById('vigilance_coarse').value),
+            mid:    parseFloat(document.getElementById('vigilance_mid').value),
+            fine:   parseFloat(document.getElementById('vigilance_fine').value)
+        };
+        try {
+            trainData = trainHierarchy(networkData, vigilances, shared);
+            pcaProjection = computePCA(networkData.X);
+            document.getElementById('pcaMulti').classList.add('visible');
+            document.getElementById('scrubberSection').style.display = 'block';
+            const sc = document.getElementById('scrubber');
+            sc.max = trainData.history.length - 1; sc.value = 0;
+            currentStep = 0; updateStep(0);
+            const counts = LEVEL_ORDER.map(l => `${LEVEL_NAMES[l]}: ${trainData.final_hub_counts[l]}`).join(' / ');
+            updateStatus('ready', `Trained - hubs ${counts}`);
+        } catch (e) {
+            console.error(e);
+            updateStatus('error', 'Training failed: ' + e.message);
+        }
+        btn.disabled = false; btn.textContent = 'TRAIN HIERARCHY';
+    }
+
+    function trainHierarchy(data, vigilances, shared) {
+        const layers = {};
+        LEVEL_ORDER.forEach(l => {
+            layers[l] = new ARTLayer(data.pool_sizes, vigilances[l], shared.learning_rate, shared.gain, shared.inhibition);
+        });
+
+        const history = [];
+        const snapshots = [];
+
+        for (let pass = 0; pass < shared.num_passes; pass++) {
+            for (let i = 0; i < data.X.length; i++) {
+                const x = data.X[i];
+                const results = {};
+                LEVEL_ORDER.forEach(l => { results[l] = layers[l].process(x); });
+                history.push({
+                    pass, episode_idx: i, episode_name: data.episodes[i].name,
+                    results
+                });
+                const snap = {};
+                LEVEL_ORDER.forEach(l => { snap[l] = layers[l].templates.map(t => [...t]); });
+                snapshots.push(snap);
+            }
+        }
+
+        const final_assignments = {};
+        LEVEL_ORDER.forEach(l => final_assignments[l] = []);
+        for (let i = 0; i < data.X.length; i++) {
+            LEVEL_ORDER.forEach(l => {
+                const layer = layers[l];
+                if (!layer.templates.length) { final_assignments[l].push({ idx: i, name: data.episodes[i].name, hub: null }); return; }
+                const [winner] = layer.compete(data.X[i]);
+                final_assignments[l].push({ idx: i, name: data.episodes[i].name, hub: winner });
+            });
+        }
+
+        const final_hub_counts = {};
+        LEVEL_ORDER.forEach(l => final_hub_counts[l] = layers[l].templates.length);
+
+        return {
+            history, snapshots, vigilances, final_assignments, final_hub_counts,
+            final_templates: Object.fromEntries(LEVEL_ORDER.map(l => [l, layers[l].templates]))
+        };
+    }
+
+    // === PCA ===
+    function powerIteration(matrix, numIter = 50, seed = 0) {
+        const d = matrix.length;
+        let v = new Array(d).fill(0).map((_, i) => Math.sin(seed * 100 + i * 7.3) * 0.5);
+        for (let iter = 0; iter < numIter; iter++) {
+            const newV = new Array(d).fill(0);
+            for (let j = 0; j < d; j++)
+                for (let k = 0; k < d; k++)
+                    newV[j] += matrix[j][k] * v[k];
+            const norm = Math.sqrt(newV.reduce((s, x) => s + x * x, 0)) + 1e-8;
+            v = newV.map(x => x / norm);
+        }
+        let maxIdx = 0, maxAbs = Math.abs(v[0]);
+        for (let i = 1; i < d; i++) if (Math.abs(v[i]) > maxAbs) { maxAbs = Math.abs(v[i]); maxIdx = i; }
+        if (v[maxIdx] < 0) v = v.map(x => -x);
+        return v;
+    }
+
+    function computePCA(data) {
+        if (!data || data.length < 2) return null;
+        const n = data.length;
+        const d = data[0].length;
+        const mean = new Array(d).fill(0);
+        for (let i = 0; i < n; i++) for (let j = 0; j < d; j++) mean[j] += data[i][j];
+        for (let j = 0; j < d; j++) mean[j] /= n;
+        const centered = data.map(row => row.map((v, j) => v - mean[j]));
+
+        const cov = new Array(d).fill(null).map(() => new Array(d).fill(0));
+        for (let i = 0; i < n; i++)
+            for (let j = 0; j < d; j++)
+                for (let k = 0; k < d; k++)
+                    cov[j][k] += centered[i][j] * centered[i][k];
+        for (let j = 0; j < d; j++) for (let k = 0; k < d; k++) cov[j][k] /= n;
+
+        const v1 = powerIteration(cov, 50, 1);
+        const lambda1 = v1.reduce((s, vi, i) => {
+            let su = 0;
+            for (let k = 0; k < d; k++) su += cov[i][k] * v1[k];
+            return s + vi * su;
+        }, 0);
+        const covDeflated = cov.map((row, i) => row.map((val, j) => val - lambda1 * v1[i] * v1[j]));
+        const v2 = powerIteration(covDeflated, 50, 2);
+
+        const projections = centered.map(row => [
+            row.reduce((s, v, i) => s + v * v1[i], 0),
+            row.reduce((s, v, i) => s + v * v2[i], 0)
+        ]);
+
+        const getTopDims = (pc, topN = 3) =>
+            pc.map((w, i) => ({ idx: i, weight: Math.abs(w) }))
+                .sort((a, b) => b.weight - a.weight)
+                .slice(0, topN)
+                .map(d => {
+                    const name = networkData.featureNames[d.idx];
+                    return name.length > 12 ? name.slice(0, 12) + '…' : name;
+                });
+
+        cachedPCA = { mean, pc1: v1, pc2: v2, pc1Dims: getTopDims(v1), pc2Dims: getTopDims(v2) };
+        return { projections, mean, v1, v2 };
+    }
+
+    function projectTemplate(template) {
+        if (!cachedPCA) return null;
+        const centered = template.map((v, i) => v - cachedPCA.mean[i]);
+        return [
+            centered.reduce((s, x, i) => s + x * cachedPCA.pc1[i], 0),
+            centered.reduce((s, x, i) => s + x * cachedPCA.pc2[i], 0)
+        ];
+    }
+
+    function togglePCAExpand() {
+        pcaExpanded = !pcaExpanded;
+        const c = document.getElementById('pcaMulti');
+        c.classList.toggle('expanded', pcaExpanded);
+        c.classList.toggle('collapsed', !pcaExpanded);
+        document.getElementById('pcaExpandBtn').textContent = pcaExpanded ? 'Collapse' : 'Expand';
+        // Re-render after transition completes (SVGs need to know new size)
+        setTimeout(() => renderAllPCAs(), 320);
+    }
+
+    function selectPCATab(level) {
+        pcaActiveTab = level;
+        document.querySelectorAll('.pca-tab').forEach(t => {
+            const active = t.dataset.level === level;
+            t.classList.toggle('active', active);
+            if (active) {
+                t.style.background = `${LEVEL_COLORS[level]}22`;
+                t.style.borderColor = LEVEL_COLORS[level];
+                t.style.color = LEVEL_COLORS[level];
+            } else {
+                t.style.background = '';
+                t.style.borderColor = '';
+                t.style.color = '';
+            }
+        });
+        document.querySelectorAll('.pca-chart-cell').forEach(c => {
+            c.classList.toggle('active', c.dataset.level === level);
+        });
+        // Re-render only the visible chart to be safe
+        renderAllPCAs();
+    }
+
+    function renderAllPCAs() {
+        if (!trainData || !pcaProjection) return;
+        LEVEL_ORDER.forEach(level => {
+            // Skip hidden cells in collapsed mode for perf
+            if (!pcaExpanded && level !== pcaActiveTab) return;
+            renderLevelPCA(level);
+        });
+    }
+
+    function renderLevelPCA(level) {
+        const svgEl = document.getElementById(`pca-chart-${level}`);
+        if (!svgEl) return;
+        const rect = svgEl.getBoundingClientRect();
+        const width = rect.width || (pcaExpanded ? 300 : 252);
+        const height = rect.height || (pcaExpanded ? 320 : 220);
+
+        const chartSvg = d3.select(svgEl);
+        chartSvg.attr("width", width).attr("height", height);
+        chartSvg.selectAll("*").remove();
+
+        const margin = { top: 8, right: 14, bottom: 32, left: 30 };
+        const innerW = width - margin.left - margin.right;
+        const innerH = height - margin.top - margin.bottom;
+        const chartG = chartSvg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const stepInfo = trainData.history[currentStep];
+        const snap = trainData.snapshots[currentStep];
+        const templates = snap[level];
+        const result = stepInfo.results[level];
+        const vigilance = trainData.vigilances[level];
+
+        const allPoints = pcaProjection.projections;
+        const hubProjections = templates.map(t => projectTemplate(t));
+        const all = [...allPoints, ...hubProjections.filter(p => p !== null)];
+        const xExt = d3.extent(all, d => d[0]);
+        const yExt = d3.extent(all, d => d[1]);
+        const xPad = (xExt[1] - xExt[0]) * 0.15 || 0.5;
+        const yPad = (yExt[1] - yExt[0]) * 0.15 || 0.5;
+        const xScale = d3.scaleLinear().domain([xExt[0] - xPad, xExt[1] + xPad]).range([0, innerW]);
+        const yScale = d3.scaleLinear().domain([yExt[0] - yPad, yExt[1] + yPad]).range([innerH, 0]);
+
+        chartG.append("g").attr("transform", `translate(0,${innerH})`)
+            .call(d3.axisBottom(xScale).ticks(pcaExpanded ? 6 : 4).tickSize(3))
+            .attr("color", "#64748b").attr("font-size", "8px");
+        chartG.append("g")
+            .call(d3.axisLeft(yScale).ticks(pcaExpanded ? 6 : 4).tickSize(3))
+            .attr("color", "#64748b").attr("font-size", "8px");
+
+        const pc1Label = cachedPCA && cachedPCA.pc1Dims ? `PC1 (${cachedPCA.pc1Dims.join(', ')})` : 'PC1';
+        const pc2Label = cachedPCA && cachedPCA.pc2Dims ? `PC2 (${cachedPCA.pc2Dims.join(', ')})` : 'PC2';
+        chartG.append("text").attr("x", innerW / 2).attr("y", innerH + 22)
+            .attr("text-anchor", "middle").attr("fill", "#94a3b8")
+            .attr("font-size", "8px").text(pc1Label);
+        chartG.append("text").attr("x", -innerH / 2).attr("y", -22)
+            .attr("text-anchor", "middle").attr("fill", "#94a3b8")
+            .attr("font-size", "8px")
+            .attr("transform", "rotate(-90)").text(pc2Label);
+
+        // Build seen episodes + hub assignments at this layer for current step
+        const seen = new Set();
+        const episodeHubs = {};
+        for (let i = 0; i <= currentStep; i++) {
+            const s = trainData.history[i];
+            seen.add(s.episode_idx);
+            episodeHubs[s.episode_idx] = s.results[level].winner;
+        }
+
+        const dotRadius = pcaExpanded ? 4.5 : 3.5;
+
+        allPoints.forEach((point, idx) => {
+            const isSeen = seen.has(idx);
+            const isCurrent = stepInfo.episode_idx === idx;
+            const hubIdx = episodeHubs[idx];
+            const fill = hubIdx !== undefined ? hubPalette[hubIdx % hubPalette.length] : '#4b5563';
+
+            chartG.append("circle")
+                .attr("class", `pca-dot ${isCurrent ? 'current' : ''}`)
+                .attr("cx", xScale(point[0])).attr("cy", yScale(point[1]))
+                .attr("r", isCurrent ? dotRadius + 2 : dotRadius)
+                .attr("fill", isSeen ? fill : '#1f2937')
+                .attr("opacity", isSeen ? 0.85 : 0.18)
+                .attr("stroke", isCurrent ? '#fff' : (isSeen ? '#0f172a' : 'none'))
+                .attr("stroke-width", isCurrent ? 2 : 1)
+                .on("mouseenter", (event) => {
+                    event.stopPropagation();
+                    const t = document.getElementById('tooltip');
+                    document.getElementById('tooltip-name').textContent = networkData.episodes[idx].name;
+                    document.getElementById('tooltip-content').innerHTML =
+                        `${LEVEL_NAMES[level]} hub: ${hubIdx !== undefined ? `H${hubIdx}` : 'not yet'}<br>PC1: ${point[0].toFixed(2)}<br>PC2: ${point[1].toFixed(2)}`;
+                    const r = event.target.getBoundingClientRect();
+                    const c = document.getElementById('viz-container').getBoundingClientRect();
+                    t.style.left = (r.right - c.left + 10) + 'px';
+                    t.style.top = (r.top - c.top) + 'px';
+                    t.classList.add('visible');
+                })
+                .on("mouseleave", () => document.getElementById('tooltip').classList.remove('visible'))
+                .on("click", (event) => { event.stopPropagation(); selectEpisode(idx); });
+        });
+
+        // Hub diamonds
+        hubProjections.forEach((proj, hubIdx) => {
+            if (!proj) return;
+            const isWinner = result.winner === hubIdx;
+            const size = isWinner ? (pcaExpanded ? 9 : 7) : (pcaExpanded ? 7 : 5);
+            const x = xScale(proj[0]); const y = yScale(proj[1]);
+            chartG.append("polygon")
+                .attr("points", `${x},${y - size} ${x + size},${y} ${x},${y + size} ${x - size},${y}`)
+                .attr("fill", hubPalette[hubIdx % hubPalette.length])
+                .attr("stroke", isWinner ? LEVEL_COLORS[level] : '#0f172a')
+                .attr("stroke-width", isWinner ? 2.5 : 1.5);
+            if (pcaExpanded) {
+                chartG.append("text").attr("x", x).attr("y", y + size + 9)
+                    .attr("text-anchor", "middle")
+                    .attr("fill", hubPalette[hubIdx % hubPalette.length])
+                    .attr("font-size", "8px").attr("font-weight", "600").text(`H${hubIdx}`);
+            }
+        });
+
+        // Update stats line
+        const statsEl = document.getElementById(`pca-stats-${level}`);
+        if (statsEl) {
+            statsEl.textContent = `${templates.length} hubs · vig ${vigilance.toFixed(2)} · winner H${result.winner}`;
+        }
+    }
+
+    function updateStep(step) {
+        if (!trainData) return;
+        step = Math.max(0, Math.min(step, trainData.history.length - 1));
+        currentStep = step;
+        document.getElementById('scrubber').value = step;
+        document.getElementById('stepLabel').textContent = `${step} / ${trainData.history.length - 1}`;
+        const data = trainData.history[step];
+        selectedEpisode = data.episode_idx;
+        updateEpisodeButtons();
+        updateInfoCard(data);
+        updateVisualization();
+        renderHubsAllLevels(step);
+        renderAllPCAs();
+    }
+
+    function updateInfoCard(stepData) {
+        const info = document.getElementById('stepInfo');
+        info.innerHTML = `
+            <div class="info-row"><span class="label">Pass</span><span class="value">${stepData.pass + 1}</span></div>
+            <div class="info-row"><span class="label">Episode</span><span class="value">${stepData.episode_name}</span></div>`;
+
+        // Hierarchy display
+        const hd = document.getElementById('hierarchyDisplay');
+        hd.innerHTML = '<h4 style="margin: 12px 0 6px 0;">Hierarchical Assignment</h4>' +
+            LEVEL_ORDER.map(l => {
+                const r = stepData.results[l];
+                return `<div class="hierarchy-row ${l}">
+                    <span class="level-name">${LEVEL_NAMES[l]}</span>
+                    <span class="hub-pill" style="background:${LEVEL_COLORS[l]}22;color:${LEVEL_COLORS[l]};border:1px solid ${LEVEL_COLORS[l]}55;">Hub ${r.winner}</span>
+                    <span class="action ${r.action}">${r.action}</span>
+                </div>`;
+            }).join('');
+
+        // Group summary - what items end up in this hub at each level
+        const gs = document.getElementById('groupSummary');
+        if (trainData.final_assignments) {
+            let html = '<div class="group-summary"><h5>Final Groups (at this episode\'s assigned hubs)</h5>';
+            LEVEL_ORDER.forEach(l => {
+                const hubIdx = stepData.results[l].winner;
+                const members = trainData.final_assignments[l]
+                    .filter(a => a.hub === hubIdx)
+                    .map(a => a.name);
+                const memberSummary = summarizeMembers(members);
+                html += `<div class="hub-line"><span style="color:${LEVEL_COLORS[l]};font-weight:600;">${LEVEL_NAMES[l]} Hub ${hubIdx}:</span> ${memberSummary}</div>`;
+            });
+            html += '</div>';
+            gs.innerHTML = html;
+        } else gs.innerHTML = '';
+    }
+
+    function summarizeMembers(names) {
+        // Strip numeric suffix to group by concept root
+        const counts = {};
+        names.forEach(n => {
+            const root = n.replace(/\d+$/, '');
+            counts[root] = (counts[root] || 0) + 1;
+        });
+        return Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([k, v]) => `${k} ×${v}`)
+            .join(', ') || 'empty';
+    }
+
+    function updateVisualization() {
+        if (!networkData) return;
+        const vec = networkData.X[selectedEpisode];
+        const r = 9;
+        Object.entries(window.nodePositions).forEach(([key, pos]) => {
+            const a = vec[pos.globalIdx];
+            const c = a > 0.05 ? d3.interpolate("#4b5563", activationColor(a))(Math.min(1, a * 1.5)) : "#4b5563";
+            d3.select(`#node-${key}`).transition().duration(50)
+                .attr("fill", c).attr("r", a > 0.3 ? r + 2 : r);
+        });
+    }
+
+    function renderHubsAllLevels(step) {
+        if (!trainData || !window.stripPositions) return;
+        const snap = trainData.snapshots[step];
+        const stepInfo = trainData.history[step];
+        const nodeGroup = window.nodeGroup;
+        const connGroup = window.connectionGroup;
+        const layout = window.layout;
+
+        nodeGroup.selectAll(".hub-node").remove();
+        nodeGroup.selectAll(".hub-strip-label").remove();
+        connGroup.selectAll(".hub-connection").remove();
+
+        const hubSpacing = 56;
+        const hubRowHeight = 44;
+        const stripHeaderH = 32;
+        const stripBottomPad = 14;
+        const hubRadius = 11;
+        const sidePad = 22;
+
+        let currentY = layout.hubAreaY;
+
+        LEVEL_ORDER.forEach(level => {
+            const strip = window.stripPositions[level];
+            const templates = snap[level];
+            const result = stepInfo.results[level];
+            const vigilance = trainData.vigilances[level];
+
+            const usableWidth = strip.width - sidePad * 2;
+            const hubsPerRow = Math.max(1, Math.floor(usableWidth / hubSpacing));
+            const numRows = templates.length === 0 ? 1 : Math.ceil(templates.length / hubsPerRow);
+            const stripHeight = Math.max(layout.minStripHeight, stripHeaderH + numRows * hubRowHeight + stripBottomPad);
+
+            // Resize / reposition strip background and labels
+            d3.select(`#strip-bg-${level}`).attr("y", currentY).attr("height", stripHeight);
+            d3.select(`#strip-title-${level}`).attr("y", currentY + 20);
+            d3.select(`#strip-info-${level}`).attr("y", currentY + 20).text(
+                templates.length === 0 ? 'No hubs yet' :
+                `${templates.length} hubs · vig ${vigilance.toFixed(2)} · winner H${result.winner} (${result.action})`
+            );
+
+            // Update stored strip position so other code (tooltips, hover etc.) sees current geometry
+            strip.y = currentY;
+            strip.height = stripHeight;
+
+            const advance = stripHeight + layout.stripGap;
+            if (templates.length === 0) { currentY += advance; return; }
+
+            const startHubX = strip.x + sidePad;
+            const startHubY = currentY + stripHeaderH + hubRowHeight / 2;
+            const ep = networkData.X[selectedEpisode];
+
+            const hubPos = templates.map((_, hubIdx) => {
+                const row = Math.floor(hubIdx / hubsPerRow);
+                const col = hubIdx % hubsPerRow;
+                return { x: startHubX + col * hubSpacing, y: startHubY + row * hubRowHeight };
+            });
+
+            templates.forEach((template, hubIdx) => {
+                const { x: hx, y: hubY } = hubPos[hubIdx];
+                const isWinner = result.winner === hubIdx;
+                const isNew = result.action === 'recruit' && isWinner;
+                const slices = [...Array(networkData.pool_sizes.length)].map((_, i) => {
+                    const off = networkData.pool_sizes.slice(0, i).reduce((a, b) => a + b, 0);
+                    return [off, off + networkData.pool_sizes[i]];
+                });
+                const sims = computePoolSimilarities(ep, template, slices);
+                const mask = slices.map(([s, e]) => {
+                    let n = 0; for (let i = s; i < e; i++) n += ep[i] * ep[i];
+                    return n > 1e-8;
+                });
+                const activeSims = sims.filter((_, i) => mask[i]);
+                const avg = activeSims.length ? activeSims.reduce((a, b) => a + b, 0) / activeSims.length : 0;
+
+                let cls = "node hub-node";
+                if (isNew) cls += " new-recruit";
+                else if (isWinner) cls += " winner";
+
+                nodeGroup.append("circle")
+                    .attr("class", cls)
+                    .attr("cx", hx).attr("cy", hubY)
+                    .attr("r", isWinner ? 15 : hubRadius)
+                    .attr("fill", activationColor(avg))
+                    .on("mouseenter", (event) => {
+                        const t = document.getElementById('tooltip');
+                        document.getElementById('tooltip-name').textContent = `${LEVEL_NAMES[level]} · Hub ${hubIdx}`;
+                        let html = `<div style="margin-bottom:6px;font-size:0.7rem;color:#64748b;">Vigilance: ${vigilance.toFixed(2)} · Similarity (active pools): ${(avg * 100).toFixed(0)}%</div>`;
+                        html += '<div style="margin-bottom:8px;">';
+                        networkData.pool_names.forEach((p, i) => {
+                            const s = sims[i];
+                            const active = mask[i];
+                            const bc = !active ? '#475569' : (s >= vigilance ? '#22c55e' : '#ef4444');
+                            html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0;font-size:0.7rem;opacity:${active ? 1 : 0.5};">
+                                <span style="width:60px;color:#94a3b8;">${p}</span>
+                                <div style="flex:1;height:8px;background:#334155;border-radius:4px;position:relative;">
+                                    <div style="height:100%;width:${active ? s * 100 : 0}%;background:${bc};border-radius:4px;"></div>
+                                    <div style="position:absolute;top:0;bottom:0;left:${vigilance * 100}%;width:2px;background:#fff;"></div>
+                                </div>
+                                <span style="width:30px;text-align:right;">${active ? (s * 100).toFixed(0) + '%' : '—'}</span>
+                            </div>`;
+                        });
+                        html += '</div>';
+                        const members = trainData.final_assignments[level].filter(a => a.hub === hubIdx).map(a => a.name);
+                        html += `<div style="padding-top:6px;border-top:1px solid #334155;font-size:0.72rem;">Members: ${summarizeMembers(members)}</div>`;
+                        document.getElementById('tooltip-content').innerHTML = html;
+                        const r = event.target.getBoundingClientRect();
+                        const c = document.getElementById('viz-container').getBoundingClientRect();
+                        t.style.left = (r.right - c.left + 10) + 'px';
+                        t.style.top = (r.top - c.top) + 'px';
+                        t.classList.add('visible');
+                    })
+                    .on("mouseleave", () => document.getElementById('tooltip').classList.remove('visible'));
+
+                nodeGroup.append("text")
+                    .attr("class", "node-label hub-strip-label")
+                    .attr("x", hx).attr("y", hubY + hubRadius + 12)
+                    .attr("text-anchor", "middle")
+                    .text(`H${hubIdx}`)
+                    .style("font-size", "9px")
+                    .style("fill", isWinner ? LEVEL_COLORS[level] : "#cbd5e1");
+            });
+
+            // Draw connections from winner hub to top features in input pools
+            if (result.winner !== null && templates[result.winner]) {
+                const winnerTemplate = templates[result.winner];
+                const { x: winnerHx, y: winnerHy } = hubPos[result.winner];
+                const top = winnerTemplate.map((w, i) => ({ idx: i, w })).sort((a, b) => b.w - a.w).slice(0, 4);
+                top.forEach(({ idx, w }) => {
+                    if (w > 0.05) {
+                        let cum = 0;
+                        for (let p = 0; p < networkData.pool_sizes.length; p++) {
+                            const ps = networkData.pool_sizes[p];
+                            if (idx < cum + ps) {
+                                const fi = idx - cum;
+                                const np = window.nodePositions[`pool-${networkData.pool_names[p]}-${fi}`];
+                                if (np) {
+                                    connGroup.append("path")
+                                        .attr("class", "connection hub-connection highlighted")
+                                        .attr("d", `M${np.x},${np.y} Q${(np.x + winnerHx) / 2},${(np.y + winnerHy) / 2} ${winnerHx},${winnerHy}`)
+                                        .attr("stroke", LEVEL_COLORS[level])
+                                        .attr("stroke-width", Math.max(1, w * 4))
+                                        .attr("stroke-opacity", 0.3 + w * 0.5);
+                                }
+                                break;
+                            }
+                            cum += ps;
+                        }
+                    }
+                });
+            }
+
+            currentY += advance;
+        });
+    }
+
+    function playbackStep(d) { updateStep(currentStep + d); }
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+        if (isPlaying) {
+            btn.textContent = 'Pause';
+            playInterval = setInterval(() => {
+                if (currentStep >= trainData.history.length - 1) currentStep = 0;
+                updateStep(currentStep + 1);
+            }, 200);
+        } else {
+            btn.textContent = 'Play';
+            clearInterval(playInterval);
+        }
+    }
+    function updateStatus(type, msg) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = msg;
+    }
+
+    window.addEventListener('resize', () => {
+        if (networkData) {
+            renderNetwork();
+            if (trainData) updateStep(currentStep);
+        }
+    });
+
+    init();
+</script>
+
+</body>
+</html>
