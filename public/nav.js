@@ -7,8 +7,10 @@
         { href: '/rumelhart.html', label: 'Rumelhart Model', section: 'Supervised' },
         { href: '/unsupervised.html', label: 'Concept Learning (Default)', section: 'Unsupervised' },
         { href: '/unsupervised_csv.html', label: 'Concept Learning (CSV)', section: 'Unsupervised' },
-        { href: '/sensory_dropout.html', label: 'Sensory Dropout ART', section: 'Unsupervised' },
-        { href: '/hierarchical_art.html', label: 'Hierarchical ART', section: 'Unsupervised' },
+        { href: '/sensory_dropout.html', label: 'Hierarchy Emergence ART', section: 'Unsupervised' },
+        { href: '/synthetic_12_clean.html', label: 'Hierarchy Emergence (Synthetic 12, Clean)', section: 'Unsupervised' },
+        { href: '/synthetic_12.html', label: 'Hierarchy Emergence (Synthetic 12, Dropout)', section: 'Unsupervised' },
+        { href: '/hierarchical_art.html', label: 'Forced Hierarchical ART', section: 'Unsupervised' },
     ];
 
     const style = document.createElement('style');

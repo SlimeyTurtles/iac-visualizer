@@ -5,243 +5,96 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rumelhart Network Visualizer</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
     <style>
-        * {
-            box-sizing: border-box;
+        /* Rumelhart uses purple as its accent color */
+        :root {
+            --accent: #8b5cf6;
+            --accent-dark: #7c3aed;
+            --accent-glow: rgba(139, 92, 246, 0.2);
+            --accent-soft: #a78bfa;
+            --sidebar-width: 336px;
         }
 
-        body {
-            margin: 0;
-            background: #0a0f1a;
-            color: #e2e8f0;
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            display: flex;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        #sidebar {
-            width: 336px;
-            background: #111827;
-            padding: 24px;
-            border-right: 1px solid #1f2937;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            overflow-y: auto;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-        }
-
-        #sidebar::-webkit-scrollbar {
-            display: none;
-        }
-
-        #sidebar h2 {
-            margin: 0 0 8px 0;
-            font-size: 1.4rem;
-            color: #f8fafc;
-            border-bottom: 2px solid #8b5cf6;
-            padding-bottom: 12px;
-        }
-
+        #sidebar h2 { margin: 0 0 8px 0; }
         .nav-link {
             display: inline-block;
-            color: #94a3b8;
+            color: var(--text-muted);
             font-size: 0.8rem;
             margin-bottom: 12px;
             text-decoration: none;
         }
+        .nav-link:hover { color: var(--text-default); }
 
-        .nav-link:hover {
-            color: #e2e8f0;
-        }
-
-        .param-group {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .param-group label {
-            font-size: 0.85rem;
-            color: #94a3b8;
-            font-weight: 500;
-        }
-
-        .param-group input[type="number"] {
-            width: 100%;
-            padding: 10px 12px;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 6px;
-            color: #f1f5f9;
-            font-size: 0.95rem;
-        }
-
-        .param-group input[type="number"]:focus {
-            outline: none;
-            border-color: #8b5cf6;
-            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
-        }
-
+        /* Train button (page uses #trainBtn instead of .btn-primary) */
         #trainBtn {
             width: 100%;
             padding: 14px;
-            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            background: linear-gradient(135deg, var(--accent), var(--accent-dark));
             border: none;
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             color: white;
             font-weight: 600;
             font-size: 1rem;
             cursor: pointer;
             transition: all 0.2s;
         }
-
         #trainBtn:hover {
-            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+            background: linear-gradient(135deg, var(--accent-dark), #6d28d9);
             transform: translateY(-1px);
         }
+        #trainBtn:disabled { background: #374151; cursor: not-allowed; transform: none; }
 
-        #trainBtn:disabled {
-            background: #374151;
-            cursor: not-allowed;
-            transform: none;
+        .node:hover { stroke: var(--accent-soft); stroke-width: 3px; }
+        .node.selected { stroke: var(--warning); stroke-width: 4px; }
+        .connection.negative { stroke: var(--danger); }
+        .connection.dimmed {
+            stroke-opacity: 0.03 !important;
+            stroke: var(--bg-card) !important;
+            stroke-width: 0.5 !important;
         }
 
-        .scrubber-section {
-            background: #1e293b;
-            padding: 16px;
-            border-radius: 8px;
-        }
-
-        .scrubber-section label {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            font-size: 0.9rem;
-        }
-
-        .scrubber-section #stepLabel {
-            color: #8b5cf6;
-            font-weight: 600;
-        }
-
-        input[type="range"] {
-            width: 100%;
-            height: 6px;
-            -webkit-appearance: none;
-            background: #334155;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 18px;
-            height: 18px;
-            background: #8b5cf6;
-            border-radius: 50%;
-            cursor: pointer;
-        }
-
-        .playback-controls {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-
-        .playback-controls button {
-            flex: 1;
-            padding: 8px;
-            background: #334155;
-            border: none;
-            border-radius: 4px;
-            color: #e2e8f0;
-            cursor: pointer;
-            font-size: 0.85rem;
-        }
-
-        .playback-controls button:hover {
-            background: #475569;
-        }
-
-        #main-container {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        #viz-container {
-            flex-grow: 1;
-            position: relative;
-            overflow: hidden;
-        }
-
-        #canvas {
-            width: 100%;
-            height: 100%;
-        }
-
+        /* Loss chart panel */
         .loss-chart-container {
             position: absolute;
             bottom: 20px;
             left: 20px;
             width: 200px;
-            background: #111827;
+            background: var(--bg-panel);
             padding: 16px;
-            border-radius: 8px;
-            border: 1px solid #1f2937;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-soft);
             z-index: 100;
         }
+        .loss-chart-container h4 { margin: 0 0 8px 0; font-size: 0.85rem; color: var(--text-muted); }
+        #loss-chart { width: 100%; height: 80px; }
 
-        .loss-chart-container h4 {
-            margin: 0 0 8px 0;
-            font-size: 0.85rem;
-            color: #94a3b8;
-        }
-
-        #loss-chart {
-            width: 100%;
-            height: 80px;
-        }
-
+        /* Lesion card */
         .lesion-card {
             position: absolute;
             top: 20px;
             left: 20px;
             width: 280px;
             max-height: 400px;
-            background: #111827;
+            background: var(--bg-panel);
             padding: 16px;
-            border-radius: 8px;
-            border: 1px solid #1f2937;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-soft);
             z-index: 100;
             overflow-y: auto;
         }
-
-        .lesion-card h4 {
-            margin: 0 0 12px 0;
-            font-size: 0.85rem;
-            color: #94a3b8;
-        }
-
+        .lesion-card h4 { margin: 0 0 12px 0; font-size: 0.85rem; color: var(--text-muted); }
         .lesion-card input[type="text"] {
             width: 100%;
             padding: 8px;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 4px;
-            color: #f1f5f9;
+            background: var(--bg-card);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-sm);
+            color: var(--text-strong);
             font-size: 0.8rem;
             margin-bottom: 10px;
         }
-
-        .lesion-card input[type="text"]:focus {
-            outline: none;
-            border-color: #8b5cf6;
-        }
+        .lesion-card input[type="text"]:focus { outline: none; border-color: var(--accent); }
 
         .lesion-props {
             display: flex;
@@ -251,243 +104,81 @@
             max-height: 200px;
             overflow-y: auto;
         }
-
         .lesion-prop-btn {
             padding: 4px 8px;
-            background: #334155;
+            background: var(--border-mid);
             border: none;
-            border-radius: 4px;
-            color: #94a3b8;
+            border-radius: var(--radius-sm);
+            color: var(--text-muted);
             font-size: 0.7rem;
             cursor: pointer;
             transition: all 0.15s;
         }
-
-        .lesion-prop-btn:hover {
-            background: #475569;
-        }
-
-        .lesion-prop-btn.active {
-            background: #22c55e;
-            color: white;
-        }
+        .lesion-prop-btn:hover { background: var(--border-strong); }
+        .lesion-prop-btn.active { background: var(--success); color: white; }
 
         .lesion-run-btn {
             width: 100%;
             padding: 8px;
-            background: #8b5cf6;
+            background: var(--accent);
             border: none;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
             color: white;
             font-size: 0.8rem;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.15s;
         }
-
-        .lesion-run-btn:hover {
-            background: #7c3aed;
-        }
-
-        .lesion-run-btn:disabled {
-            background: #374151;
-            cursor: not-allowed;
-        }
-
-        .lesion-props-label {
-            font-size: 0.75rem;
-            color: #94a3b8;
-            margin-bottom: 6px;
-        }
+        .lesion-run-btn:hover { background: var(--accent-dark); }
+        .lesion-run-btn:disabled { background: #374151; cursor: not-allowed; }
+        .lesion-props-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; }
 
         .lesion-scrubber {
             margin-top: 12px;
             padding-top: 12px;
-            border-top: 1px solid #334155;
+            border-top: 1px solid var(--border-mid);
         }
-
         .lesion-scrubber label {
             display: flex;
             justify-content: space-between;
             font-size: 0.75rem;
-            color: #94a3b8;
+            color: var(--text-muted);
             margin-bottom: 6px;
         }
-
-        .lesion-scrubber input[type="range"] {
-            width: 100%;
-            height: 6px;
-            -webkit-appearance: none;
-            background: #334155;
-            border-radius: 3px;
-            outline: none;
-        }
-
         .lesion-scrubber input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
             width: 14px;
             height: 14px;
             background: #059669;
-            border-radius: 50%;
-            cursor: pointer;
         }
 
-        .node {
-            cursor: pointer;
-            stroke: #1e293b;
-            stroke-width: 2px;
-            transition: stroke 0.15s, stroke-width 0.15s;
-        }
-
-        .node:hover {
-            stroke: #a78bfa;
-            stroke-width: 3px;
-        }
-
-        .node.selected {
-            stroke: #fbbf24;
-            stroke-width: 4px;
-        }
-
-        .node-label {
-            fill: #cbd5e1;
-            font-size: 10px;
-            pointer-events: none;
-            font-weight: 500;
-        }
-
-        .layer-label {
-            fill: #64748b;
-            font-size: 14px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .layer-bg {
-            fill: #111827;
-            stroke: #1f2937;
-            stroke-width: 1px;
-            rx: 12;
-        }
-
-        .connection {
-            fill: none;
-            stroke-opacity: 0.3;
-            pointer-events: none;
-        }
-
-        .connection.positive {
-            stroke: #22c55e;
-        }
-
-        .connection.negative {
-            stroke: #ef4444;
-        }
-
-        .connection.highlighted {
-            stroke-opacity: 1;
-            stroke-width: 3;
-        }
-
-        .connection.dimmed {
-            stroke-opacity: 0.03 !important;
-            stroke: #1e293b !important;
-            stroke-width: 0.5 !important;
-        }
-
-        .legend {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: #111827;
-            padding: 16px;
-            border-radius: 8px;
-            border: 1px solid #1f2937;
-        }
-
-        .legend h4 {
-            margin: 0 0 12px 0;
-            font-size: 0.85rem;
-            color: #94a3b8;
-        }
-
-        .legend-gradient {
-            width: 150px;
-            height: 16px;
-            border-radius: 4px;
-            margin-bottom: 6px;
-        }
-
-        .legend-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.75rem;
-            color: #64748b;
-        }
-
-        .concept-select {
-            background: #1e293b;
-            padding: 12px;
-            border-radius: 6px;
-        }
-
-        .concept-select h4 {
-            margin: 0 0 8px 0;
-            font-size: 0.8rem;
-            color: #94a3b8;
-        }
-
+        .concept-select { background: var(--bg-card); padding: 12px; border-radius: var(--radius-md); }
+        .concept-select h4 { margin: 0 0 8px 0; font-size: 0.8rem; color: var(--text-muted); }
         .concept-btn {
             display: inline-block;
             padding: 6px 12px;
-            background: #334155;
+            background: var(--border-mid);
             border: none;
-            border-radius: 4px;
-            color: #e2e8f0;
+            border-radius: var(--radius-sm);
+            color: var(--text-default);
             font-size: 0.8rem;
             cursor: pointer;
             margin: 2px;
             transition: all 0.15s;
         }
-
-        .concept-btn:hover {
-            background: #475569;
-        }
-
-        .concept-btn.active {
-            background: #8b5cf6;
-            color: white;
-        }
-
-        .concept-btn.lesion {
-            background: #065f46;
-            border: 1px solid #059669;
-        }
-
-        .concept-btn.lesion:hover {
-            background: #047857;
-        }
-
-        .concept-btn.lesion.active {
-            background: #059669;
-            color: white;
-        }
+        .concept-btn:hover { background: var(--border-strong); }
+        .concept-btn.active { background: var(--accent); color: white; }
+        .concept-btn.lesion { background: #065f46; border: 1px solid #059669; }
+        .concept-btn.lesion:hover { background: #047857; }
+        .concept-btn.lesion.active { background: #059669; color: white; }
 
         .predictions-panel {
-            background: #1e293b;
+            background: var(--bg-card);
             padding: 12px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             flex-grow: 1;
             overflow-y: auto;
         }
-
-        .predictions-panel h4 {
-            margin: 0 0 8px 0;
-            font-size: 0.8rem;
-            color: #94a3b8;
-        }
-
+        .predictions-panel h4 { margin: 0 0 8px 0; font-size: 0.8rem; color: var(--text-muted); }
         .prediction-row {
             display: flex;
             justify-content: space-between;
@@ -495,188 +186,76 @@
             padding: 4px 0;
             font-size: 0.75rem;
         }
-
-        .prediction-row .prop-name {
-            color: #cbd5e1;
-        }
-
+        .prediction-row .prop-name { color: var(--text-soft); }
         .prediction-row .prop-bar {
             flex: 1;
             height: 8px;
-            background: #334155;
-            border-radius: 4px;
+            background: var(--border-mid);
+            border-radius: var(--radius-sm);
             margin: 0 8px;
             overflow: hidden;
         }
+        .prediction-row .prop-fill { height: 100%; border-radius: var(--radius-sm); transition: width 0.3s; }
+        .prediction-row .prop-value { color: var(--text-muted); min-width: 40px; text-align: right; }
 
-        .prediction-row .prop-fill {
-            height: 100%;
-            border-radius: 4px;
-            transition: width 0.3s;
-        }
-
-        .prediction-row .prop-value {
-            color: #94a3b8;
-            min-width: 40px;
-            text-align: right;
-        }
-
-        .status {
-            font-size: 0.8rem;
-            color: #64748b;
-            text-align: center;
-            padding: 8px;
-        }
-
-        .status.running {
-            color: #fbbf24;
-        }
-
-        .status.ready {
-            color: #22c55e;
-        }
-
-        .tooltip {
-            position: absolute;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 12px;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.15s;
-            z-index: 1000;
-            min-width: 180px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        }
-
-        .tooltip.visible {
-            opacity: 1;
-        }
-
-        .tooltip-header {
-            font-weight: 600;
-            font-size: 1rem;
-            color: #f1f5f9;
-            margin-bottom: 8px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #334155;
-        }
-
-        .tooltip-content {
-            font-size: 0.85rem;
-            color: #94a3b8;
-        }
-
-        .reset-view-btn {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            padding: 8px 16px;
-            background: #334155;
-            border: 1px solid #475569;
-            border-radius: 6px;
-            color: #e2e8f0;
-            font-size: 0.85rem;
-            cursor: pointer;
-            z-index: 100;
-            transition: all 0.2s;
-        }
-
-        .reset-view-btn:hover {
-            background: #475569;
-            border-color: #8b5cf6;
-        }
+        .tooltip-content { font-size: 0.85rem; }
 
         .data-section {
-            background: #1e293b;
+            background: var(--bg-card);
             padding: 12px;
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
         }
-
         .data-section h4 {
             margin: 0 0 10px 0;
             font-size: 0.85rem;
-            color: #94a3b8;
+            color: var(--text-muted);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-
         .data-section h4 button {
             padding: 4px 8px;
             font-size: 0.7rem;
-            background: #334155;
+            background: var(--border-mid);
             border: none;
-            border-radius: 4px;
-            color: #e2e8f0;
+            border-radius: var(--radius-sm);
+            color: var(--text-default);
             cursor: pointer;
         }
-
-        .data-section h4 button:hover {
-            background: #475569;
-        }
+        .data-section h4 button:hover { background: var(--border-strong); }
 
         .csv-input {
             width: 100%;
             height: 80px;
             padding: 8px;
-            background: #0f172a;
-            border: 1px solid #334155;
-            border-radius: 6px;
-            color: #e2e8f0;
+            background: var(--bg-card-2);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-md);
+            color: var(--text-default);
             font-family: monospace;
             font-size: 0.7rem;
             resize: vertical;
             margin-bottom: 8px;
         }
-
-        .csv-input:focus {
-            outline: none;
-            border-color: #8b5cf6;
-        }
+        .csv-input:focus { outline: none; border-color: var(--accent); }
 
         .load-csv-btn {
             width: 100%;
             padding: 8px;
-            background: #8b5cf6;
+            background: var(--accent);
             border: none;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             color: white;
             font-weight: 500;
             font-size: 0.8rem;
             cursor: pointer;
             transition: all 0.2s;
         }
+        .load-csv-btn:hover { background: var(--accent-dark); }
 
-        .load-csv-btn:hover {
-            background: #7c3aed;
-        }
+        .info-text { font-size: 0.75rem; color: var(--text-dim); margin-top: 8px; line-height: 1.4; }
 
-        .info-text {
-            font-size: 0.75rem;
-            color: #64748b;
-            margin-top: 8px;
-            line-height: 1.4;
-        }
-
-        .section-header {
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: #8b5cf6;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin: 16px 0 8px 0;
-            padding-bottom: 6px;
-            border-bottom: 1px solid #334155;
-        }
-
-        .lesion-concepts-list {
-            margin-top: 8px;
-            font-size: 0.75rem;
-            color: #94a3b8;
-        }
-
+        .lesion-concepts-list { margin-top: 8px; font-size: 0.75rem; color: var(--text-muted); }
         .lesion-concept-tag {
             display: inline-block;
             padding: 2px 6px;

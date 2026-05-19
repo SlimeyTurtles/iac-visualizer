@@ -1,7 +1,11 @@
 import sys
+import os
 import json
 import torch
 from iac import IACModel
+
+# Resolve data file relative to this script so the bridge works regardless of cwd.
+DATA_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'jets_sharks.csv')
 
 
 def get_network_info(csv_path):
@@ -40,7 +44,7 @@ def get_network_info(csv_path):
     }
 
 
-def run_simulation(selected_nodes, params, csv_path='jets_sharks.csv'):
+def run_simulation(selected_nodes, params, csv_path=DATA_CSV):
     """Runs the IAC simulation and returns history."""
     model = IACModel(
         csv_path,
@@ -82,7 +86,7 @@ if __name__ == "__main__":
 
     if command == "info":
         # Just get network structure
-        result = get_network_info('jets_sharks.csv')
+        result = get_network_info(DATA_CSV)
         print(json.dumps(result))
 
     elif command == "run":
