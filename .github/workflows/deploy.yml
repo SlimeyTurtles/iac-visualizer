@@ -1,0 +1,51 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}  # allow manual re-deploy from the Actions tab
+
+# Don't deploy two commits in parallel; let the running deploy finish.
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: SSH into EC2 and deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          script_stop: true            # stop on first failing command
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.EC2_PROJECT_PATH }}"
+
+            echo "==> Fetching latest main"
+            git fetch --all --prune
+            git reset --hard origin/main
+
+            echo "==> Installing production dependencies"
+            npm ci --omit=dev
+
+            APP_NAME="${{ vars.PM2_APP_NAME || 'iac-visualizer' }}"
+
+            echo "==> Restarting via PM2 ($APP_NAME)"
+            if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
+              pm2 restart "$APP_NAME" --update-env
+            else
+              pm2 start npm --name "$APP_NAME" -- start
+            fi
+
+            # Persist the PM2 process list so it survives reboots
+            # (run `pm2 startup` + `pm2 save` once during initial setup).
+            pm2 save
+
+            echo "==> Deployed commit $(git rev-parse --short HEAD)"

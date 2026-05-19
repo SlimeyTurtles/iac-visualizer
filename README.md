@@ -35,6 +35,10 @@ Open <http://localhost:3000>.
 | [archive/](archive/) | Old code kept for reference |
 | [docs/](docs/) | How-to guides |
 
+## Deployment
+
+Auto-deploys to EC2 on every push to `main` via GitHub Actions ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)). See [docs/deploy-setup.md](docs/deploy-setup.md) for the one-time EC2 + GitHub-secrets setup.
+
 ## For contributors (including AI agents)
 
 Read [CLAUDE.md](CLAUDE.md) for project conventions and [ARCHITECTURE.md](ARCHITECTURE.md) for the system overview. To add a new model, see [docs/adding-a-model.md](docs/adding-a-model.md).
