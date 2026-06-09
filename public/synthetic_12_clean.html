@@ -90,9 +90,13 @@
     </div>
 
     <div class="hub-list" id="hubListSection" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px 0; gap: 6px;">
             <h4 style="margin: 0; font-size: 0.8rem; color: #94a3b8;">Learned Hubs</h4>
-            <button id="downloadHubsBtn" onclick="downloadHubsCSV()" style="background: none; border: 1px solid var(--accent); color: var(--accent); font-size: 0.65rem; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: inherit; letter-spacing: 0.05em;">DOWNLOAD CSV</button>
+            <div style="display: flex; gap: 4px;">
+                <button onclick="downloadHubsCSV()" style="background: none; border: 1px solid var(--accent); color: var(--accent); font-size: 0.65rem; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: inherit; letter-spacing: 0.05em;" title="Hub vectors, assignments, hub-to-hub similarity">CSV</button>
+                <button onclick="downloadPCAData()" style="background: none; border: 1px solid var(--accent); color: var(--accent); font-size: 0.65rem; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: inherit; letter-spacing: 0.05em;" title="PCA coordinates + Python script for matplotlib">PCA</button>
+                <button onclick="downloadPCASVG()" style="background: none; border: 1px solid var(--accent); color: var(--accent); font-size: 0.65rem; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: inherit; letter-spacing: 0.05em;" title="SVG snapshot of current PCA chart">SVG</button>
+            </div>
         </div>
         <div id="hubList"></div>
     </div>
@@ -798,6 +802,53 @@
         };
     }
 
+    function computeHubSimilarityMatrix() {
+        if (!trainData || !networkData) return null;
+        const templates = trainData.final_templates;
+        const params = trainData.params || {};
+        const model = new UnsupervisedModel(
+            networkData.pool_sizes,
+            params.vigilance ?? 0.977,
+            params.learning_rate ?? 0.08,
+            params.gain ?? 1,
+            params.inhibition ?? 0
+        );
+        const n = templates.length;
+        const numPools = networkData.pool_names.length;
+        const avg = Array.from({ length: n }, () => new Array(n).fill(0));
+        const perPool = Array.from({ length: numPools }, () =>
+            Array.from({ length: n }, () => new Array(n).fill(0))
+        );
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n; j++) {
+                const sims = model.computePoolSimilarities(templates[i], templates[j]);
+                let s = 0;
+                for (let p = 0; p < sims.length; p++) {
+                    perPool[p][i][j] = sims[p];
+                    s += sims[p];
+                }
+                avg[i][j] = sims.length > 0 ? s / sims.length : 0;
+            }
+        }
+        return { avg, perPool };
+    }
+
+    function triggerDownload(content, filename, mime) {
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function stamp() {
+        return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    }
+
     function downloadHubsCSV() {
         if (!trainData || !networkData) return;
         const featureNames = networkData.featureNames;
@@ -836,18 +887,142 @@
             const sims = (a.pool_similarities || []).map(s => s.toFixed(6));
             lines.push([a.episode_name, `H${a.hub}`, ...sims].join(','));
         });
+        lines.push('');
 
-        const csv = lines.join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        a.href = url;
-        a.download = `synthetic_12_clean_hubs_v${params.vigilance ?? 'na'}_${stamp}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const matrices = computeHubSimilarityMatrix();
+        if (matrices) {
+            const hubLabels = templates.map((_, i) => `H${i}`);
+            lines.push('# --- Hub-to-hub similarity: average across pools (model metric, symmetric, diag=1.0) ---');
+            lines.push(['', ...hubLabels].join(','));
+            matrices.avg.forEach((row, i) => {
+                lines.push([hubLabels[i], ...row.map(v => v.toFixed(6))].join(','));
+            });
+            networkData.pool_names.forEach((poolName, p) => {
+                lines.push('');
+                lines.push(`# --- Hub-to-hub similarity: pool=${poolName} ---`);
+                lines.push(['', ...hubLabels].join(','));
+                matrices.perPool[p].forEach((row, i) => {
+                    lines.push([hubLabels[i], ...row.map(v => v.toFixed(6))].join(','));
+                });
+            });
+        }
+
+        triggerDownload(
+            lines.join('\n'),
+            `synthetic_12_clean_hubs_v${params.vigilance ?? 'na'}_${stamp()}.csv`,
+            'text/csv;charset=utf-8'
+        );
+    }
+
+    function downloadPCAData() {
+        if (!trainData || !networkData || !pcaProjection || !cachedPCA) {
+            updateStatus('error', 'Train the model first to generate PCA data');
+            return;
+        }
+        const params = trainData.params || {};
+        const featureNames = networkData.featureNames;
+        const sampleProjections = pcaProjection.projections;
+        const templates = trainData.final_templates;
+        const hubProjections = templates.map(t => projectTemplate(t));
+
+        // sample-level coordinates with their assigned hub + concept root
+        const sampleCsv = [];
+        sampleCsv.push('# PCA projection of training samples');
+        sampleCsv.push(`# Generated: ${new Date().toISOString()}  vigilance=${params.vigilance ?? ''}  num_hubs=${trainData.num_hubs}`);
+        sampleCsv.push('SampleName,ConceptRoot,AssignedHub,PC1,PC2');
+        const assignments = trainData.final_assignments;
+        const hubByIdx = {};
+        assignments.forEach(a => { hubByIdx[a.episode_idx] = a.hub; });
+        networkData.episodes.forEach((ep, i) => {
+            const root = ep.name.replace(/_BAD\d+$/, '_BAD').replace(/\d+$/, '');
+            const hub = hubByIdx[i];
+            const [pc1, pc2] = sampleProjections[i];
+            sampleCsv.push([ep.name, root, hub !== undefined ? `H${hub}` : '', pc1.toFixed(6), pc2.toFixed(6)].join(','));
+        });
+
+        // hub centroid coordinates
+        const hubCsv = [];
+        hubCsv.push('# PCA projection of hub templates');
+        hubCsv.push('HubID,PC1,PC2');
+        hubProjections.forEach((p, i) => {
+            if (p) hubCsv.push([`H${i}`, p[0].toFixed(6), p[1].toFixed(6)].join(','));
+        });
+
+        // PC loadings so the user can label axes
+        const loadingsCsv = [];
+        loadingsCsv.push('# PC loadings (weight of each feature on PC1 / PC2)');
+        loadingsCsv.push('Feature,PC1,PC2');
+        featureNames.forEach((f, i) => {
+            loadingsCsv.push([f, cachedPCA.pc1[i].toFixed(6), cachedPCA.pc2[i].toFixed(6)].join(','));
+        });
+
+        const baseName = `synthetic_12_clean_pca_v${params.vigilance ?? 'na'}_${stamp()}`;
+
+        // matplotlib script the user can drop next to the CSVs
+        const py = `"""
+Reproduce the PCA scatter from synthetic_12_clean.html in matplotlib.
+Drop this file next to the three CSVs and run: python plot_pca.py
+"""
+import pandas as pd
+import matplotlib.pyplot as plt
+
+samples = pd.read_csv("${baseName}_samples.csv", comment="#")
+hubs = pd.read_csv("${baseName}_hubs.csv", comment="#")
+loadings = pd.read_csv("${baseName}_loadings.csv", comment="#")
+
+# Top-3 features by |weight| label each PC
+def top_features(pc_col, n=3):
+    top = loadings.reindex(loadings[pc_col].abs().sort_values(ascending=False).index).head(n)
+    return ", ".join(top["Feature"].tolist())
+
+fig, ax = plt.subplots(figsize=(9, 7))
+for root, grp in samples.groupby("ConceptRoot"):
+    ax.scatter(grp["PC1"], grp["PC2"], label=root, alpha=0.7, s=30)
+ax.scatter(hubs["PC1"], hubs["PC2"], c="black", marker="x", s=120, linewidths=2, label="hub centroids")
+for _, row in hubs.iterrows():
+    ax.annotate(row["HubID"], (row["PC1"], row["PC2"]), xytext=(5, 5), textcoords="offset points", fontsize=9)
+
+ax.set_xlabel(f"PC1 ({top_features('PC1')})")
+ax.set_ylabel(f"PC2 ({top_features('PC2')})")
+ax.set_title("Hierarchy Emergence ART - PCA of training samples and hub templates")
+ax.legend(loc="best", fontsize=8, ncol=2)
+ax.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig("${baseName}.png", dpi=200)
+plt.show()
+`;
+
+        triggerDownload(sampleCsv.join('\n'), `${baseName}_samples.csv`, 'text/csv;charset=utf-8');
+        triggerDownload(hubCsv.join('\n'), `${baseName}_hubs.csv`, 'text/csv;charset=utf-8');
+        triggerDownload(loadingsCsv.join('\n'), `${baseName}_loadings.csv`, 'text/csv;charset=utf-8');
+        triggerDownload(py, `plot_pca.py`, 'text/x-python;charset=utf-8');
+    }
+
+    function downloadPCASVG() {
+        const svgEl = document.getElementById('pca-chart');
+        if (!svgEl || svgEl.children.length === 0) {
+            updateStatus('error', 'Train the model first to render the PCA chart');
+            return;
+        }
+        const clone = svgEl.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        if (!clone.getAttribute('viewBox')) {
+            const bbox = svgEl.getBoundingClientRect();
+            clone.setAttribute('viewBox', `0 0 ${bbox.width} ${bbox.height}`);
+        }
+        // Inline a dark background so the SVG isn't transparent when opened standalone
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('width', '100%');
+        rect.setAttribute('height', '100%');
+        rect.setAttribute('fill', '#0f172a');
+        clone.insertBefore(rect, clone.firstChild);
+        const xml = new XMLSerializer().serializeToString(clone);
+        const params = trainData?.params || {};
+        triggerDownload(
+            `<?xml version="1.0" encoding="UTF-8"?>\n${xml}`,
+            `synthetic_12_clean_pca_v${params.vigilance ?? 'na'}_${stamp()}.svg`,
+            'image/svg+xml;charset=utf-8'
+        );
     }
 
     function updateStep(step) {
