@@ -10,6 +10,7 @@
         { href: '/sensory_dropout.html', label: 'Hierarchy Emergence ART', section: 'Unsupervised' },
         { href: '/synthetic_12_clean.html', label: 'Hierarchy Emergence (Synthetic 12, Clean)', section: 'Unsupervised' },
         { href: '/synthetic_12.html', label: 'Hierarchy Emergence (Synthetic 12, Dropout)', section: 'Unsupervised' },
+        { href: '/synthetic_12_decay.html', label: 'Hierarchy Emergence (Corrupted + Decay)', section: 'Unsupervised' },
         { href: '/hierarchical_art.html', label: 'Forced Hierarchical ART', section: 'Unsupervised' },
     ];
 
