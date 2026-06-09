@@ -101,6 +101,21 @@
         <div id="hubList"></div>
     </div>
 
+    <div id="probeSection" style="display: none; padding: 10px; margin-top: 10px; background: var(--bg-panel); border-radius: 4px; border: 1px solid var(--border);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <h4 style="margin: 0; font-size: 0.8rem; color: #94a3b8;">Probe Mode</h4>
+            <button id="probeToggleBtn" onclick="toggleProbeMode()" style="background: none; border: 1px solid var(--accent); color: var(--accent); font-size: 0.7rem; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-family: inherit; letter-spacing: 0.05em;">ENTER PROBE</button>
+        </div>
+        <div id="probeHint" style="font-size: 0.7rem; color: var(--text-muted); line-height: 1.4;">Click input feature nodes to set partial values. The network will activate hubs by similarity and reconstruct the full feature pattern from the best-matching hub.</div>
+        <div id="probeControls" style="display: none; margin-top: 10px;">
+            <button onclick="clearProbe()" style="background: none; border: 1px solid var(--border-strong); color: var(--text-muted); font-size: 0.65rem; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: inherit; margin-right: 4px;">CLEAR</button>
+            <select id="probeStartFrom" onchange="probeLoadSample(this.value)" style="background: var(--bg-panel); border: 1px solid var(--border); color: var(--text); font-size: 0.65rem; padding: 3px 6px; border-radius: 3px; font-family: inherit;">
+                <option value="">— Load sample as probe —</option>
+            </select>
+            <div id="probeReadout" style="margin-top: 8px; font-size: 0.7rem; color: var(--text-muted);"></div>
+        </div>
+    </div>
+
     <div id="status" class="status">Click TRAIN MODEL to start</div>
 </div>
 
@@ -142,6 +157,10 @@
     let pcaProjection = null;
     let cachedPCA = null;
     let isPCAExpanded = false;
+
+    let probeMode = false;
+    let probeVector = null;
+    let probeMask = null;
 
     const svg = d3.select("#canvas");
     let g;
@@ -370,7 +389,8 @@
             .attr("r", nodeRadius)
             .attr("fill", "#4b5563")
             .on("mouseenter", (event, d) => handleNodeHover(event, d, true))
-            .on("mouseleave", (event, d) => handleNodeHover(event, d, false));
+            .on("mouseleave", (event, d) => handleNodeHover(event, d, false))
+            .on("click", (event, d) => handleInputNodeClick(event, d));
 
         const maxTextWidth = poolWidth - circleLeftOffset - nodeRadius - 10;
         const maxChars = Math.floor(maxTextWidth / 6);
@@ -762,6 +782,8 @@
             currentStep = lastStep; updateStep(lastStep);
             document.getElementById('hubListSection').style.display = 'block';
             updateHubList();
+            document.getElementById('probeSection').style.display = 'block';
+            populateProbeSampleSelector();
             updateStatus('ready', `Training complete - ${trainData.num_hubs} hubs learned`);
         } catch (e) {
             console.error(e);
@@ -1253,9 +1275,348 @@ plt.show()
     window.addEventListener('resize', () => {
         if (networkData) {
             renderNetwork();
-            if (trainData) { updateStep(currentStep); renderPCAChart(); }
+            if (trainData) {
+                if (probeMode) renderProbeOverlay();
+                else updateStep(currentStep);
+                renderPCAChart();
+            }
         }
     });
+
+    // -------------------- Probe Mode --------------------
+    //
+    // Probe mode lets the user click input features to construct a partial
+    // feature vector, runs it through the trained hubs to get per-hub similarity
+    // activations, then renders a reconstructed-features layer below the hubs
+    // showing the soft-max-weighted average of the activated hub templates. The
+    // reconstruction is the model's "pattern completion" answer: given partial
+    // input, this is what it thinks the rest of the features should be.
+
+    function toggleProbeMode() {
+        if (!trainData) return;
+        probeMode = !probeMode;
+        const btn = document.getElementById('probeToggleBtn');
+        const controls = document.getElementById('probeControls');
+        const hint = document.getElementById('probeHint');
+        if (probeMode) {
+            btn.textContent = 'EXIT PROBE';
+            btn.style.background = 'var(--accent)';
+            btn.style.color = '#0f172a';
+            controls.style.display = 'block';
+            hint.textContent = 'Click any input feature to add it to your probe. Drag a node to adjust its value (0-1). The bottom layer shows the model's reconstruction.';
+            document.getElementById('scrubberSection').style.display = 'none';
+            document.querySelector('.episode-list').style.display = 'none';
+            // Initialize empty probe vector and mask
+            probeVector = new Array(networkData.featureNames.length).fill(0);
+            probeMask = new Array(networkData.featureNames.length).fill(false);
+            renderProbeOverlay();
+        } else {
+            btn.textContent = 'ENTER PROBE';
+            btn.style.background = 'none';
+            btn.style.color = 'var(--accent)';
+            controls.style.display = 'none';
+            hint.textContent = 'Click input feature nodes to set partial values. The network will activate hubs by similarity and reconstruct the full feature pattern from the best-matching hub.';
+            document.getElementById('scrubberSection').style.display = 'block';
+            document.querySelector('.episode-list').style.display = 'block';
+            clearProbeOverlay();
+            updateStep(currentStep);
+        }
+    }
+
+    function handleInputNodeClick(event, d) {
+        if (!probeMode || !trainData) return;
+        const idx = d.globalIdx;
+        // Cycle: off (mask=false) -> on at 1.0 -> on at 0.5 -> off again
+        if (!probeMask[idx]) {
+            probeMask[idx] = true;
+            probeVector[idx] = 1.0;
+        } else if (probeVector[idx] >= 1.0) {
+            probeVector[idx] = 0.5;
+        } else if (probeVector[idx] >= 0.5) {
+            probeVector[idx] = 0.25;
+        } else {
+            probeMask[idx] = false;
+            probeVector[idx] = 0;
+        }
+        renormalizeProbeSimplex();
+        renderProbeOverlay();
+    }
+
+    function renormalizeProbeSimplex() {
+        // For simplex pools (Locomotion, Habitat), if the user has set features,
+        // renormalize them so they sum to 1 within active features. Pools with
+        // no active features stay at zero (the mask will skip them).
+        if (!networkData) return;
+        let off = 0;
+        networkData.pool_names.forEach((name, pIdx) => {
+            const size = networkData.pool_sizes[pIdx];
+            const isSimplex = networkData.features[name] && (name === 'Locomotion' || name === 'Habitat');
+            if (isSimplex) {
+                let sum = 0;
+                for (let i = off; i < off + size; i++) if (probeMask[i]) sum += probeVector[i];
+                if (sum > 1e-8) {
+                    for (let i = off; i < off + size; i++) if (probeMask[i]) probeVector[i] = probeVector[i] / sum;
+                }
+            }
+            off += size;
+        });
+    }
+
+    function clearProbe() {
+        if (!probeMode) return;
+        probeVector = new Array(networkData.featureNames.length).fill(0);
+        probeMask = new Array(networkData.featureNames.length).fill(false);
+        document.getElementById('probeStartFrom').value = '';
+        renderProbeOverlay();
+    }
+
+    function populateProbeSampleSelector() {
+        if (!networkData) return;
+        const sel = document.getElementById('probeStartFrom');
+        sel.innerHTML = '<option value="">— Load sample as probe —</option>';
+        networkData.episodes.forEach((ep, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = ep.name;
+            sel.appendChild(opt);
+        });
+    }
+
+    function probeLoadSample(idx) {
+        if (idx === '' || !networkData) return;
+        const i = parseInt(idx);
+        probeVector = [...networkData.X[i]];
+        probeMask = probeVector.map(v => v > 1e-8);
+        renderProbeOverlay();
+    }
+
+    function buildProbeModel() {
+        const params = trainData.params || {};
+        const model = new UnsupervisedModel(
+            networkData.pool_sizes,
+            params.vigilance ?? 0.977,
+            params.learning_rate ?? 0.08,
+            params.gain ?? 1,
+            params.inhibition ?? 0
+        );
+        model.templates = trainData.final_templates.map(t => [...t]);
+        return model;
+    }
+
+    function computeProbeResponse() {
+        const model = buildProbeModel();
+        // Apply mask to vector: zero out features the user hasn't set so
+        // computePoolMask treats those pools as inactive.
+        const x = probeVector.map((v, i) => probeMask[i] ? v : 0);
+        const drives = model.computeBottomUpDrive(x);
+        if (drives.length === 0) return null;
+
+        const maxDrive = Math.max(...drives);
+        const driveSum = drives.reduce((a, b) => a + b, 0);
+        const normalized = driveSum > 1e-8 ? drives.map(d => d / driveSum) : drives.map(() => 0);
+
+        const winner = drives.indexOf(maxDrive);
+
+        // Reconstruction: softmax-weighted sum of hub templates (temperature
+        // controls how sharp the winner-take-all is). With temp=1, this is
+        // essentially the winner template if drives are well-separated, and a
+        // mixture if multiple hubs are close.
+        const temperature = 0.05;
+        const expDrives = drives.map(d => Math.exp(d / temperature));
+        const expSum = expDrives.reduce((a, b) => a + b, 0);
+        const weights = expSum > 1e-8 ? expDrives.map(e => e / expSum) : expDrives.map(() => 0);
+
+        const reconstruction = new Array(networkData.featureNames.length).fill(0);
+        for (let h = 0; h < model.templates.length; h++) {
+            const t = model.templates[h];
+            for (let i = 0; i < t.length; i++) reconstruction[i] += weights[h] * t[i];
+        }
+
+        return { drives, normalized, weights, winner, reconstruction };
+    }
+
+    function clearProbeOverlay() {
+        g.selectAll('.probe-overlay').remove();
+        // Also clear the live-rendered hubs since updateStep isn't running in probe mode
+        if (window.nodeGroup) {
+            window.nodeGroup.selectAll('.hub-node').remove();
+            window.nodeGroup.selectAll('.hub-label').remove();
+        }
+        if (window.connectionGroup) {
+            window.connectionGroup.selectAll('.hub-connection').remove();
+        }
+    }
+
+    function renderProbeOverlay() {
+        if (!probeMode || !trainData || !window.nodePositions || !window.hubArea) return;
+        clearProbeOverlay();
+        const overlay = g.append('g').attr('class', 'probe-overlay');
+
+        // Paint input nodes by probe value vs. mask
+        Object.entries(window.nodePositions).forEach(([key, pos]) => {
+            const idx = pos.globalIdx;
+            const isSet = probeMask[idx];
+            const v = probeVector[idx];
+            const node = g.select(`#node-${key}`);
+            if (isSet) {
+                node.attr('fill', activationColor(v))
+                    .attr('stroke', '#a78bfa')
+                    .attr('stroke-width', 2);
+            } else {
+                node.attr('fill', '#374151')
+                    .attr('stroke', '#1f2937')
+                    .attr('stroke-width', 1);
+            }
+        });
+
+        const response = computeProbeResponse();
+        if (!response) return;
+
+        // Draw hubs in the overlay group with activation-based fill
+        const templates = trainData.final_templates;
+        const hubArea = window.hubArea;
+        const hubNodeRadius = 12;
+        const hubSpacing = 60;
+        const neededWidth = templates.length * hubSpacing + 40;
+        const actualWidth = Math.min(Math.max(neededWidth, hubArea.width), 900);
+        const actualHeight = Math.min(80 + Math.ceil(templates.length / 12) * 50, 250);
+        const poolsCenterX = hubArea.poolsStartX + hubArea.totalPoolsWidth / 2;
+        const centeredHubX = poolsCenterX - actualWidth / 2;
+
+        d3.select('#hub-area-bg').attr('x', centeredHubX).attr('width', actualWidth).attr('height', actualHeight);
+        d3.select('#hub-label').attr('x', poolsCenterX).attr('y', hubArea.y + actualHeight + 5);
+
+        const hubsPerRow = Math.floor(actualWidth / hubSpacing);
+        const hubStartX = centeredHubX + 30;
+        const hubStartY = hubArea.y + 20;
+
+        const hubPositions = templates.map((_, hubIdx) => {
+            const row = Math.floor(hubIdx / hubsPerRow);
+            const col = hubIdx % hubsPerRow;
+            return { x: hubStartX + col * hubSpacing, y: hubStartY + row * 45 };
+        });
+
+        templates.forEach((template, hubIdx) => {
+            const { x, y } = hubPositions[hubIdx];
+            const norm = response.normalized[hubIdx] || 0;
+            const drive = response.drives[hubIdx];
+            const isWinner = hubIdx === response.winner;
+
+            overlay.append('circle')
+                .attr('class', 'probe-hub-node')
+                .attr('cx', x).attr('cy', y)
+                .attr('r', isWinner ? 16 : hubNodeRadius)
+                .attr('fill', activationColor(drive))
+                .attr('stroke', isWinner ? '#fff' : hubColors[hubIdx % hubColors.length])
+                .attr('stroke-width', isWinner ? 2 : 1.5);
+
+            overlay.append('text')
+                .attr('x', x).attr('y', y + 4)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '10px')
+                .style('fill', drive > 0.5 ? '#000' : '#fff')
+                .style('font-weight', '600')
+                .text(`H${hubIdx}`);
+
+            overlay.append('text')
+                .attr('x', x).attr('y', y + hubNodeRadius + 14)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '8px')
+                .style('fill', 'var(--text-muted)')
+                .text(`${(norm * 100).toFixed(0)}%`);
+        });
+
+        // --- RECONSTRUCTED layer below the hubs ---
+        const reconY = hubArea.y + actualHeight + 60;
+        const startX = window.hubArea.poolsStartX;
+        const poolWidth = 150;
+        const poolSpacing = 25;
+        const nodeSpacing = 30;
+        const nodeRadius = 9;
+        const boxPadding = 20;
+        const circleLeftOffset = 25;
+        const maxPoolSize = Math.max(...networkData.pool_sizes);
+        const maxPoolHeight = boxPadding + (maxPoolSize - 1) * nodeSpacing + boxPadding;
+
+        overlay.append('rect')
+            .attr('class', 'layer-bg pool')
+            .attr('x', startX)
+            .attr('y', reconY)
+            .attr('width', window.hubArea.totalPoolsWidth)
+            .attr('height', maxPoolHeight)
+            .attr('opacity', 0.5);
+
+        overlay.append('text')
+            .attr('class', 'layer-label')
+            .attr('x', startX + window.hubArea.totalPoolsWidth / 2)
+            .attr('y', reconY - 8)
+            .attr('text-anchor', 'middle')
+            .style('fill', 'var(--accent)')
+            .text('RECONSTRUCTED (pattern completion)');
+
+        // Mirror the input layer structure
+        let globalIdx = 0;
+        networkData.pool_names.forEach((poolName, poolIdx) => {
+            const poolFeatures = networkData.features[poolName];
+            const poolSize = networkData.pool_sizes[poolIdx];
+            const poolX = startX + poolIdx * (poolWidth + poolSpacing);
+            const totalNodesHeight = (poolSize - 1) * nodeSpacing;
+            const nodeStartY = reconY + boxPadding + (maxPoolHeight - 2 * boxPadding - totalNodesHeight) / 2;
+
+            overlay.append('rect')
+                .attr('class', 'layer-bg pool')
+                .attr('x', poolX)
+                .attr('y', reconY)
+                .attr('width', poolWidth)
+                .attr('height', maxPoolHeight)
+                .attr('fill', 'none')
+                .attr('stroke', 'var(--border)')
+                .attr('stroke-width', 0.5);
+
+            poolFeatures.forEach((feature, featureIdx) => {
+                const cx = poolX + circleLeftOffset;
+                const cy = nodeStartY + featureIdx * nodeSpacing;
+                const v = response.reconstruction[globalIdx];
+                const wasInProbe = probeMask[globalIdx];
+
+                overlay.append('circle')
+                    .attr('cx', cx)
+                    .attr('cy', cy)
+                    .attr('r', nodeRadius)
+                    .attr('fill', activationColor(v))
+                    .attr('stroke', wasInProbe ? 'var(--accent)' : '#1f2937')
+                    .attr('stroke-width', wasInProbe ? 2 : 1)
+                    .attr('stroke-dasharray', wasInProbe ? '2,2' : null);
+
+                overlay.append('text')
+                    .attr('x', cx + nodeRadius + 5)
+                    .attr('y', cy + 4)
+                    .style('font-size', '10px')
+                    .style('fill', wasInProbe ? 'var(--text-muted)' : 'var(--text)')
+                    .text(`${feature} ${v.toFixed(2)}`);
+
+                globalIdx++;
+            });
+        });
+
+        // Readout text
+        const topHubs = response.drives
+            .map((d, i) => ({ i, d, w: response.weights[i] }))
+            .sort((a, b) => b.d - a.d)
+            .slice(0, 3);
+        const setCount = probeMask.filter(Boolean).length;
+        const readout = document.getElementById('probeReadout');
+        readout.innerHTML = `
+            <div style="color: var(--text);"><strong>${setCount}/${networkData.featureNames.length}</strong> features set</div>
+            <div style="margin-top: 4px;">Top hubs by drive:</div>
+            ${topHubs.map(h => `
+                <div style="display: flex; justify-content: space-between; margin-top: 2px;">
+                    <span style="color: ${hubColors[h.i % hubColors.length]};">Hub ${h.i}</span>
+                    <span>drive=${h.d.toFixed(3)} weight=${(h.w * 100).toFixed(1)}%</span>
+                </div>
+            `).join('')}
+        `;
+    }
 
     init();
 </script>
