@@ -6,6 +6,7 @@
     <title>Hierarchy Emergence ART (Synthetic 12, Clean)</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="/synthetic_12_clean_data.js"></script>
+    <script src="/prototypes_data.js"></script>
     <link rel="stylesheet" href="/theme.css">
     <style>
         #pca-chart { width: 100%; height: 180px; transition: height 0.3s ease; }
@@ -96,6 +97,7 @@
                 <button onclick="downloadHubsCSV()" style="background: none; border: 1px solid var(--accent); color: var(--accent); font-size: 0.65rem; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: inherit; letter-spacing: 0.05em;" title="Hub vectors, assignments, hub-to-hub similarity">CSV</button>
                 <button onclick="downloadPCAData()" style="background: none; border: 1px solid var(--accent); color: var(--accent); font-size: 0.65rem; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: inherit; letter-spacing: 0.05em;" title="PCA coordinates + Python script for matplotlib">PCA</button>
                 <button onclick="downloadPCASVG()" style="background: none; border: 1px solid var(--accent); color: var(--accent); font-size: 0.65rem; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: inherit; letter-spacing: 0.05em;" title="SVG snapshot of current PCA chart">SVG</button>
+                <button onclick="downloadPrototypesCSV()" style="background: none; border: 1px solid var(--accent); color: var(--accent); font-size: 0.65rem; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: inherit; letter-spacing: 0.05em;" title="Ground-truth prototypes (rows=concepts, cols=features, taxonomic order)">PROTOS</button>
             </div>
         </div>
         <div id="hubList"></div>
@@ -603,23 +605,30 @@
                 .attr("stroke", isWinner ? '#fff' : '#0f172a')
                 .attr("stroke-width", isWinner ? 3 : 1.5);
             if (isPCAExpanded) {
+                const concept = hubToConcept(hubIdx);
                 chartG.append("text").attr("x", x).attr("y", y + size + 12)
                     .attr("text-anchor", "middle")
                     .attr("fill", hubColors[hubIdx % hubColors.length])
-                    .attr("font-size", "10px").attr("font-weight", "600").text(`H${hubIdx}`);
+                    .attr("font-size", "10px").attr("font-weight", "600")
+                    .text(concept || `H${hubIdx}`);
             }
         });
 
         if (trainData.num_hubs > 0) {
-            const legendG = chartSvg.append("g").attr("transform", `translate(${width - 50}, 10)`);
-            const maxHubs = isPCAExpanded ? 12 : 6;
-            for (let h = 0; h < Math.min(trainData.num_hubs, maxHubs); h++) {
-                legendG.append("circle").attr("cx", 0).attr("cy", h * (isPCAExpanded ? 16 : 12))
-                    .attr("r", isPCAExpanded ? 5 : 4).attr("fill", hubColors[h % hubColors.length]);
+            // Legend: order hubs by taxonomy so visually adjacent rows = taxonomically adjacent concepts.
+            const ordered = hubsInTaxonomicOrder();
+            const maxHubs = isPCAExpanded ? 14 : 8;
+            const rowH = isPCAExpanded ? 16 : 12;
+            const legendWidth = isPCAExpanded ? 140 : 100;
+            const legendG = chartSvg.append("g").attr("transform", `translate(${width - legendWidth}, 10)`);
+            ordered.slice(0, maxHubs).forEach((o, row) => {
+                legendG.append("circle").attr("cx", 0).attr("cy", row * rowH)
+                    .attr("r", isPCAExpanded ? 5 : 4).attr("fill", hubColors[o.i % hubColors.length]);
+                const label = `H${o.i}${o.concept ? ' — ' + o.concept : ''}`;
                 legendG.append("text").attr("x", isPCAExpanded ? 10 : 8)
-                    .attr("y", h * (isPCAExpanded ? 16 : 12) + 4).attr("fill", "#94a3b8")
-                    .attr("font-size", isPCAExpanded ? "10px" : "8px").text(`H${h}`);
-            }
+                    .attr("y", row * rowH + 4).attr("fill", "#94a3b8")
+                    .attr("font-size", isPCAExpanded ? "10px" : "8px").text(label);
+            });
         }
 
         document.getElementById('pcaTitle').textContent = isPCAExpanded ?
@@ -722,6 +731,41 @@
     // Generic (superordinate) concept roots in this dataset. Everything else is a species.
     const GENERIC_ROOTS = new Set(['tree', 'flower', 'bird', 'fish', 'plant', 'animal']);
     const ROOT_OF = name => name.replace(/\d+$/, '');
+
+    function taxonomicRank(concept) {
+        const order = (window.TAXONOMIC_ORDER || []);
+        const i = order.indexOf(concept);
+        return i === -1 ? order.length + (concept ? concept.charCodeAt(0) : 999) : i;
+    }
+
+    function hubToConcept(hubIdx) {
+        if (!trainData) return null;
+        const counts = {};
+        trainData.final_assignments.forEach(a => {
+            if (a.hub === hubIdx) {
+                const root = ROOT_OF(a.episode_name);
+                counts[root] = (counts[root] || 0) + 1;
+            }
+        });
+        let best = null, bestN = -1;
+        for (const [k, v] of Object.entries(counts)) {
+            if (v > bestN) { bestN = v; best = k; }
+        }
+        return best;
+    }
+
+    function hubsInTaxonomicOrder() {
+        if (!trainData) return [];
+        const idx = trainData.final_templates.map((_, i) => i);
+        return idx
+            .map(i => ({ i, concept: hubToConcept(i) }))
+            .sort((a, b) => {
+                const ra = taxonomicRank(a.concept);
+                const rb = taxonomicRank(b.concept);
+                if (ra !== rb) return ra - rb;
+                return a.i - b.i;
+            });
+    }
 
     // Seeded mulberry32 RNG so "random" shuffle is reproducible.
     function mulberry32(seed) {
@@ -913,17 +957,22 @@
 
         const matrices = computeHubSimilarityMatrix();
         if (matrices) {
-            const hubLabels = templates.map((_, i) => `H${i}`);
+            const ordered = hubsInTaxonomicOrder(); // [{ i, concept }, ...]
+            const hubLabels = ordered.map(o => `H${o.i} (${o.concept || '?'})`);
+            const reorderRow = row => ordered.map(o => row[o.i]);
+            const reorderMatrix = mat => ordered.map(o => reorderRow(mat[o.i]));
+
             lines.push('# --- Hub-to-hub similarity: average across pools (model metric, symmetric, diag=1.0) ---');
+            lines.push('# Rows/cols ordered taxonomically: super-generics -> kingdoms -> species');
             lines.push(['', ...hubLabels].join(','));
-            matrices.avg.forEach((row, i) => {
+            reorderMatrix(matrices.avg).forEach((row, i) => {
                 lines.push([hubLabels[i], ...row.map(v => v.toFixed(6))].join(','));
             });
             networkData.pool_names.forEach((poolName, p) => {
                 lines.push('');
                 lines.push(`# --- Hub-to-hub similarity: pool=${poolName} ---`);
                 lines.push(['', ...hubLabels].join(','));
-                matrices.perPool[p].forEach((row, i) => {
+                reorderMatrix(matrices.perPool[p]).forEach((row, i) => {
                     lines.push([hubLabels[i], ...row.map(v => v.toFixed(6))].join(','));
                 });
             });
@@ -1018,6 +1067,43 @@ plt.show()
         triggerDownload(hubCsv.join('\n'), `${baseName}_hubs.csv`, 'text/csv;charset=utf-8');
         triggerDownload(loadingsCsv.join('\n'), `${baseName}_loadings.csv`, 'text/csv;charset=utf-8');
         triggerDownload(py, `plot_pca.py`, 'text/x-python;charset=utf-8');
+    }
+
+    function downloadPrototypesCSV() {
+        const protos = window.PROTOTYPES;
+        const pools = window.PROTOTYPE_POOLS;
+        const order = window.TAXONOMIC_ORDER;
+        if (!protos || !pools || !order) {
+            updateStatus('error', 'Prototype data not loaded');
+            return;
+        }
+        // Build feature column list: Pool:feature, in the same order pools are defined.
+        const featureCols = [];
+        pools.forEach(pool => pool.features.forEach(f => featureCols.push({ pool: pool.name, feature: f, label: `${pool.name}:${f}` })));
+
+        const lines = [];
+        lines.push('# Ground-truth prototypes (transposed: rows = concepts, cols = features)');
+        lines.push('# Rows ordered taxonomically: super-generic -> kingdom -> species');
+        lines.push(`# Generated: ${new Date().toISOString()}`);
+        lines.push(['Concept', ...featureCols.map(c => c.label)].join(','));
+
+        order.forEach(concept => {
+            const proto = protos[concept];
+            if (!proto) return;
+            const row = [concept];
+            featureCols.forEach(c => {
+                const arr = proto[c.pool];
+                const idx = pools.find(p => p.name === c.pool).features.indexOf(c.feature);
+                row.push(arr[idx].toFixed(4));
+            });
+            lines.push(row.join(','));
+        });
+
+        triggerDownload(
+            lines.join('\n'),
+            `synthetic_12_prototypes_${stamp()}.csv`,
+            'text/csv;charset=utf-8'
+        );
     }
 
     function downloadPCASVG() {
