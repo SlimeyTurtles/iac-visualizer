@@ -1,0 +1,14 @@
+name: iac
+
+services:
+  web:
+    build: .
+    container_name: iac-web
+    ports:
+      - "3004:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

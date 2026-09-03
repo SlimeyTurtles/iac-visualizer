@@ -1,51 +1,45 @@
-name: Deploy to EC2
+name: Deploy to home server
+
+# Push to main → rsync into ~/iac on the box → rebuild + restart the web
+# container. Runs on the self-hosted runner on the box itself, so no SSH
+# or secrets are needed.
 
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}  # allow manual re-deploy from the Actions tab
+  workflow_dispatch:
 
-# Don't deploy two commits in parallel; let the running deploy finish.
 concurrency:
-  group: deploy-ec2
+  group: deploy-main
   cancel-in-progress: false
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: self-hosted
+    timeout-minutes: 20
+
     steps:
-      - name: SSH into EC2 and deploy
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || 22 }}
-          script_stop: true            # stop on first failing command
-          command_timeout: 5m
-          script: |
-            set -euo pipefail
-            cd "${{ secrets.EC2_PROJECT_PATH }}"
+      - uses: actions/checkout@v4
 
-            echo "==> Fetching latest main"
-            git fetch --all --prune
-            git reset --hard origin/main
+      - name: Sync source to ~/iac
+        run: |
+          rsync -az --delete \
+            --exclude='.git/' \
+            --exclude='node_modules/' \
+            --exclude='notebooks/' \
+            --exclude='archive/' \
+            --exclude='__pycache__/' \
+            "${{ github.workspace }}/" /home/avinh/iac/
 
-            echo "==> Installing production dependencies"
-            npm ci --omit=dev
+      - name: Build + restart web
+        working-directory: /home/avinh/iac
+        run: docker compose up -d --build web
 
-            APP_NAME="${{ vars.PM2_APP_NAME || 'iac-visualizer' }}"
-
-            echo "==> Restarting via PM2 ($APP_NAME)"
-            if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
-              pm2 restart "$APP_NAME" --update-env
-            else
-              pm2 start npm --name "$APP_NAME" -- start
-            fi
-
-            # Persist the PM2 process list so it survives reboots
-            # (run `pm2 startup` + `pm2 save` once during initial setup).
-            pm2 save
-
-            echo "==> Deployed commit $(git rev-parse --short HEAD)"
+      - name: Smoke test
+        working-directory: /home/avinh/iac
+        run: |
+          sleep 5
+          docker compose ps web
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://localhost:3004/)
+          echo "status: $code"
+          [ "$code" = "200" ] && echo ok || { echo unexpected; exit 1; }
