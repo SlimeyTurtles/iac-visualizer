@@ -59,5 +59,6 @@ app.listen(port, () => {
     console.log(`  - Hierarchy Emergence (Synthetic 12, Clean): http://localhost:${port}/synthetic_12_clean.html`);
     console.log(`  - Hierarchy Emergence (Synthetic 12, Dropout): http://localhost:${port}/synthetic_12.html`);
     console.log(`  - Hierarchy Emergence (Corrupted + Decay): http://localhost:${port}/synthetic_12_decay.html`);
-    console.log(`  - Forced Hierarchical ART: http://localhost:${port}/hierarchical_art.html\n`);
+    console.log(`  - Forced Hierarchical ART: http://localhost:${port}/hierarchical_art.html`);
+    console.log(`  - ESCF (Perception · Consequence · Goal): http://localhost:${port}/escf.html\n`);
 });

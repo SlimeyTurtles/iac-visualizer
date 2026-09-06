@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESCF — Emergent Semantic Cognition</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/escf_model.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        :root {
+            --accent: #6366f1;
+            --accent-dark: #4f46e5;
+            --accent-glow: rgba(99, 102, 241, 0.2);
+            --accent-soft: #818cf8;
+        }
+        .phase-pill {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-panel, #111827);
+            border: 1px solid var(--accent);
+            color: var(--accent-soft);
+            border-radius: 999px;
+            padding: 6px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .phase-jump {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin: 8px 0;
+        }
+        .phase-jump button {
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #cbd5e1;
+            border-radius: 6px;
+            padding: 6px 4px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .phase-jump button:hover { border-color: var(--accent); color: var(--accent-soft); }
+        .phase-jump button:disabled { opacity: 0.4; cursor: default; }
+        .probe-panel select, .probe-panel label.chk {
+            width: 100%;
+            font-size: 0.8rem;
+        }
+        .probe-panel label.chk {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #cbd5e1;
+            margin: 6px 0;
+            cursor: pointer;
+        }
+        .probe-panel label.chk input { width: auto; }
+        .probe-result {
+            font-size: 0.75rem;
+            color: #cbd5e1;
+            background: #0b1220;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 8px;
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+        .probe-result .completed { color: var(--success, #22c55e); }
+        .node-legend {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            background: var(--bg-panel, #111827);
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 0.7rem;
+            color: #94a3b8;
+            z-index: 5;
+        }
+        .node-legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+        .node-legend .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>ESCF</h2>
+    <div class="subtitle">The Emergent Semantic Cognition Framework: one hub-and-spoke architecture run in three modes &mdash; <strong>perceptual</strong> (categories from covariation, Sim&nbsp;1a), <strong>consequence</strong> (outcomes split look-alike berries and assemble a weapon category, Sims&nbsp;2a/2b), and <strong>goal</strong> (a purpose reshapes perception via g&nbsp;&#8857;&nbsp;x, Sim&nbsp;3).</div>
+
+    <div class="dataset-info">
+        <strong>Duplex coding:</strong> every feature has a <em>present</em> and an <em>absent</em> unit; a feature that fails to register is coded observed-absent.<br>
+        <strong>One rule throughout:</strong> cosine match &rarr; competition &rarr; fixed vigilance &rho; snap (running mean) or recruit. Engagement, not the criterion, sets the level of coarseness.
+    </div>
+
+    <div class="section-header">Hyperparameters</div>
+
+    <div class="params-grid">
+        <div class="param-group">
+            <label>Vigilance &rho;</label>
+            <input type="number" id="rho" value="0.90" step="any" data-arrow-step="0.01" min="0" max="1">
+        </div>
+        <div class="param-group">
+            <label>Threshold &theta;</label>
+            <input type="number" id="theta" value="0.30" step="any" data-arrow-step="0.02" min="0" max="1">
+        </div>
+        <div class="param-group">
+            <label>Noise &sigma;</label>
+            <input type="number" id="sigma" value="0.02" step="any" data-arrow-step="0.005" min="0" max="0.2">
+        </div>
+        <div class="param-group">
+            <label>Seed</label>
+            <input type="number" id="seed" value="42" step="1" min="0" max="9999">
+        </div>
+    </div>
+
+    <div class="section-header">Simulations</div>
+
+    <button id="runBtn" class="btn-primary" onclick="runAllSims()">RUN ALL SIMULATIONS</button>
+
+    <div class="scrubber-section" id="scrubberSection" style="display: none;">
+        <label>
+            <span>Trial</span>
+            <span id="stepLabel">0 / 0</span>
+        </label>
+        <input type="range" id="scrubber" min="0" max="0" value="0" oninput="updateStep(parseInt(this.value))">
+        <div class="playback-controls">
+            <button onclick="playbackStep(-5)">-5</button>
+            <button onclick="playbackStep(-1)">-1</button>
+            <button onclick="togglePlay()" id="playBtn">Play</button>
+            <button onclick="playbackStep(1)">+1</button>
+            <button onclick="playbackStep(5)">+5</button>
+        </div>
+        <div class="phase-jump" id="phaseJump"></div>
+    </div>
+
+    <div class="section-header" id="probeHeader" style="display:none;">Probe (no learning)</div>
+    <div class="probe-panel" id="probePanel" style="display: none;">
+        <div class="params-grid">
+            <div class="param-group">
+                <label>Item</label>
+                <select id="probeItem"></select>
+            </div>
+            <div class="param-group">
+                <label>Engagement</label>
+                <select id="probeEngagement"></select>
+            </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="probeGoal"> Apply <em>fend-off</em> goal lens (g &#8857; x)</label>
+        <button class="btn-primary" style="margin-top:4px;" onclick="runProbe()">PROBE</button>
+        <div class="probe-result" id="probeResult" style="display:none;"></div>
+    </div>
+
+    <div class="hub-list" id="hubListSection" style="display: none;">
+        <h4 style="margin: 0 0 8px 0; font-size: 0.8rem; color: #94a3b8;">Hubs (categories need &ge;2 trials)</h4>
+        <div id="hubList"></div>
+    </div>
+
+    <div id="status" class="status">Click RUN ALL SIMULATIONS to start</div>
+</div>
+
+<div id="main-container">
+    <div id="viz-container">
+        <div class="phase-pill" id="phasePill" style="display:none;"></div>
+        <svg id="canvas"></svg>
+        <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+        <div id="tooltip" class="tooltip">
+            <div class="tooltip-header" id="tooltip-name"></div>
+            <div class="tooltip-content" id="tooltip-content"></div>
+        </div>
+        <div class="node-legend">
+            <div class="row"><span class="dot" style="background:#f59e0b;"></span> present unit (registered)</div>
+            <div class="row"><span class="dot" style="background:#0b1220;border:2px solid #3b82f6;"></span> absent unit (observed missing)</div>
+            <div class="row"><span class="dot" style="background:#22c55e;"></span> outcome disclosed by acting</div>
+            <div class="row"><span class="dot" style="background:#a855f7;"></span> goal-transformed activation</div>
+        </div>
+        <div class="legend">
+            <h4>Activation Level</h4>
+            <div class="legend-gradient" id="legendGradient"></div>
+            <div class="legend-labels">
+                <span>0.0</span><span>0.5</span><span>1.0</span>
+            </div>
+        </div>
+        <div class="info-card" id="infoCard">
+            <h4>Trial Information</h4>
+            <div id="stepInfo">Run the simulations to see trial details</div>
+            <div id="matchInfo" style="margin-top: 12px;"></div>
+            <div id="expectationInfo" style="margin-top: 12px;"></div>
+        </div>
+    </div>
+</div>
+
+<script src="/nav.js"></script>
+<script>
+    let runData = null;      // { model, history, phases }
+    let phaseStarts = [];    // first history index of each phase
+    let currentStep = 0;
+    let isPlaying = false;
+    let playInterval = null;
+
+    const svg = d3.select("#canvas");
+    let g, zoomBehavior;
+    const activationColor = d3.scaleSequential().domain([0, 1]).interpolator(d3.interpolateYlOrRd);
+    const hubColors = d3.schemeCategory10;
+
+    const BAND_LABELS = { super: 'SUPERORDINATE', basic: 'BASIC', detail: 'DETAIL', outcome: 'OUTCOME' };
+    const BAND_ORDER = ['super', 'basic', 'detail', 'outcome'];
+    const BAND_COLS = { super: 1, basic: 1, detail: 2, outcome: 1 };
+
+    function init() {
+        zoomBehavior = d3.zoom().scaleExtent([0.1, 3]).on("zoom", (event) => g.attr("transform", event.transform));
+        svg.call(zoomBehavior);
+        g = svg.append("g");
+        document.getElementById('legendGradient').style.background =
+            `linear-gradient(to right, ${activationColor(0)}, ${activationColor(0.5)}, ${activationColor(1)})`;
+        renderStatic();
+        populateProbeSelectors();
+        updateStatus('ready', `${ESCF.FEATURES.length} duplex features, ${Object.keys(ESCF.ITEMS).length} items, 4 phases`);
+    }
+
+    function resetView() {
+        svg.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    // ---------- static layout: band boxes + feature nodes ----------
+    function renderStatic() {
+        const container = document.getElementById('viz-container');
+        svg.attr("width", container.clientWidth).attr("height", container.clientHeight);
+        g.selectAll("*").remove();
+
+        const nodeSpacing = 26, nodeRadius = 8, boxPadding = 18, colWidth = 148;
+        const startX = 40, startY = 70, boxSpacing = 22;
+
+        const bands = {};
+        BAND_ORDER.forEach(b => bands[b] = []);
+        ESCF.FEATURES.forEach((f, i) => bands[f.band].push({ ...f, idx: i }));
+
+        const nodePositions = {};
+        let x = startX;
+        let maxBoxH = 0;
+        BAND_ORDER.forEach(band => {
+            const feats = bands[band];
+            const cols = BAND_COLS[band];
+            const rows = Math.ceil(feats.length / cols);
+            const boxW = cols * colWidth;
+            const boxH = boxPadding * 2 + (rows - 1) * nodeSpacing + 10;
+            maxBoxH = Math.max(maxBoxH, boxH);
+
+            g.append("rect").attr("class", "layer-bg pool")
+                .attr("x", x).attr("y", startY).attr("width", boxW).attr("height", boxH);
+            g.append("text").attr("class", "layer-label pool")
+                .attr("x", x + boxW / 2).attr("y", startY - 14).attr("text-anchor", "middle")
+                .text(BAND_LABELS[band]);
+
+            feats.forEach((f, k) => {
+                const col = Math.floor(k / rows), row = k % rows;
+                nodePositions[f.idx] = {
+                    x: x + 22 + col * colWidth,
+                    y: startY + boxPadding + row * nodeSpacing,
+                    feature: f.name, band: f.band, idx: f.idx
+                };
+            });
+            x += boxW + boxSpacing;
+        });
+
+        const nodeGroup = g.append("g").attr("class", "nodes");
+        const connectionGroup = g.append("g").attr("class", "connections");
+        const all = Object.values(nodePositions);
+
+        nodeGroup.selectAll(".node.feature-node")
+            .data(all).enter()
+            .append("circle")
+            .attr("class", "node feature-node")
+            .attr("id", d => `fnode-${d.idx}`)
+            .attr("cx", d => d.x).attr("cy", d => d.y).attr("r", nodeRadius)
+            .attr("fill", "#4b5563")
+            .on("mouseenter", (event, d) => featureTooltip(event, d))
+            .on("mouseleave", () => hideTooltip());
+
+        nodeGroup.selectAll(".node-label.feature")
+            .data(all).enter()
+            .append("text").attr("class", "node-label feature")
+            .attr("x", d => d.x + nodeRadius + 5).attr("y", d => d.y + 4)
+            .text(d => d.feature.length > 16 ? d.feature.slice(0, 15) + '…' : d.feature)
+            .style("font-size", "10px");
+
+        const hubAreaY = startY + maxBoxH + 55;
+        const totalW = x - boxSpacing - startX;
+        g.append("rect").attr("class", "layer-bg hub").attr("id", "hub-area-bg")
+            .attr("x", startX).attr("y", hubAreaY - 10).attr("width", totalW).attr("height", 90);
+        g.append("text").attr("class", "layer-label").attr("id", "hub-label")
+            .attr("x", startX + totalW / 2).attr("y", hubAreaY + 100).attr("text-anchor", "middle")
+            .text("HUBS");
+
+        window.escfLayout = { nodePositions, hubAreaX: startX, hubAreaY, hubAreaW: totalW, nodeGroup, connectionGroup, nodeRadius };
+    }
+
+    // ---------- run ----------
+    function runAllSims() {
+        const btn = document.getElementById('runBtn');
+        btn.disabled = true; btn.textContent = 'RUNNING…';
+        updateStatus('running', 'Running all simulations…');
+        setTimeout(() => {
+            try {
+                const params = {
+                    rho: parseFloat(document.getElementById('rho').value),
+                    theta: parseFloat(document.getElementById('theta').value),
+                    sigma: parseFloat(document.getElementById('sigma').value),
+                    seed: parseInt(document.getElementById('seed').value),
+                };
+                runData = ESCF.runAll(params);
+                phaseStarts = [];
+                let acc = 0;
+                runData.phases.forEach(p => { phaseStarts.push(acc); acc += p.count; });
+
+                const sc = document.getElementById('scrubber');
+                sc.max = runData.history.length - 1;
+                document.getElementById('scrubberSection').style.display = 'block';
+                document.getElementById('hubListSection').style.display = 'block';
+                document.getElementById('probeHeader').style.display = 'block';
+                document.getElementById('probePanel').style.display = 'block';
+                document.getElementById('phasePill').style.display = 'block';
+                renderPhaseJump();
+                updateHubList();
+                updateStep(0);
+                updateStatus('ready', `Done — ${runData.history.length} trials, ${runData.model.hubs.length} hubs formed`);
+            } catch (e) {
+                console.error(e);
+                updateStatus('error', 'Run failed: ' + e.message);
+            }
+            btn.disabled = false; btn.textContent = 'RUN ALL SIMULATIONS';
+        }, 30);
+    }
+
+    function renderPhaseJump() {
+        const short = ['1. Perceptual', '2a. Berries', '2b. Weapons', '3. Goal'];
+        document.getElementById('phaseJump').innerHTML = runData.phases.map((p, i) =>
+            `<button onclick="updateStep(${phaseStarts[i]})" title="${p.name}">${short[i]}</button>`).join('');
+    }
+
+    // ---------- step rendering ----------
+    function updateStep(step) {
+        if (!runData) return;
+        step = Math.max(0, Math.min(step, runData.history.length - 1));
+        currentStep = step;
+        document.getElementById('scrubber').value = step;
+        document.getElementById('stepLabel').textContent = `${step + 1} / ${runData.history.length}`;
+        const rec = runData.history[step];
+        document.getElementById('phasePill').textContent = rec.phaseName;
+        updateFeatureNodes(rec);
+        renderHubs(rec);
+        updateStepInfo(rec);
+    }
+
+    function displayVector(rec) {
+        // what the model actually categorized on this trial
+        return (rec.mode === 'probe' && rec.xGoal) ? rec.xGoal : rec.x;
+    }
+
+    function updateFeatureNodes(rec) {
+        const { nodePositions, nodeRadius } = window.escfLayout;
+        const vec = displayVector(rec);
+        const goalOn = rec.mode === 'probe' && rec.goal;
+        ESCF.FEATURES.forEach((f, i) => {
+            const present = vec[2 * i], absent = vec[2 * i + 1];
+            const node = d3.select(`#fnode-${i}`);
+            if (f.band === 'outcome') {
+                if (present > 0.01) node.attr("fill", "#22c55e").attr("stroke", "none").attr("r", nodeRadius + 2);
+                else if (absent > 0.01) node.attr("fill", "#7f1d1d").attr("stroke", "#ef4444").attr("stroke-width", 2).attr("r", nodeRadius + 2);
+                else node.attr("fill", "#374151").attr("stroke", "none").attr("r", nodeRadius);
+            } else if (present > 0.01) {
+                node.attr("fill", goalOn ? d3.interpolate("#4b5563", "#a855f7")(Math.min(1, present * 1.6))
+                                        : activationColor(Math.min(1, present * 1.3)))
+                    .attr("stroke", "none")
+                    .attr("r", present > 0.3 ? nodeRadius + 2 : nodeRadius);
+            } else if (absent > 0.01) {
+                node.attr("fill", "#0b1220").attr("stroke", "#3b82f6").attr("stroke-width", 1.5).attr("r", nodeRadius - 1);
+            } else {
+                node.attr("fill", "#374151").attr("stroke", "none").attr("r", nodeRadius);
+            }
+        });
+        window.currentRec = rec;
+    }
+
+    function renderHubs(rec) {
+        const L = window.escfLayout;
+        L.nodeGroup.selectAll(".hub-node").remove();
+        L.nodeGroup.selectAll(".hub-label-txt").remove();
+        L.connectionGroup.selectAll(".hub-connection").remove();
+        const hubs = rec.hubSnapshot;
+        if (!hubs.length) return;
+
+        const spacing = 58, perRow = Math.max(1, Math.floor((L.hubAreaW - 40) / spacing));
+        const rows = Math.ceil(hubs.length / perRow);
+        const areaH = 30 + rows * 46;
+        d3.select("#hub-area-bg").attr("height", areaH);
+        d3.select("#hub-label").attr("y", L.hubAreaY + areaH + 12);
+
+        hubs.forEach((h, i) => {
+            const row = Math.floor(i / perRow), col = i % perRow;
+            const hx = L.hubAreaX + 34 + col * spacing;
+            const hy = L.hubAreaY + 18 + row * 46;
+            const isWinner = rec.winner === h.id;
+            const sim = rec.sims && rec.sims[i] !== undefined ? rec.sims[i] : 0;
+            const summ = rec.summary.find(s => s.id === h.id);
+            const singleton = h.n < 2;
+
+            L.nodeGroup.append("circle")
+                .attr("class", `node hub-node ${isWinner ? 'winner' : ''}`)
+                .attr("cx", hx).attr("cy", hy)
+                .attr("r", isWinner ? 15 : 11)
+                .attr("fill", activationColor(Math.max(0, sim)))
+                .attr("opacity", singleton ? 0.45 : 1)
+                .attr("stroke", isWinner ? '#fff' : (summ && summ.outcome ? '#22c55e' : 'none'))
+                .attr("stroke-width", isWinner ? 3 : 1.5)
+                .on("mouseenter", (event) => hubTooltip(event, h, summ, sim, rec))
+                .on("mouseleave", () => hideTooltip());
+
+            L.nodeGroup.append("text").attr("class", "node-label hub-label-txt")
+                .attr("x", hx).attr("y", hy + 26).attr("text-anchor", "middle")
+                .text(`H${h.id}`).style("font-size", "9px");
+
+            if (isWinner) {
+                const top = [];
+                ESCF.FEATURES.forEach((f, fi) => { if (h.w[2 * fi] > 0.12) top.push({ fi, w: h.w[2 * fi] }); });
+                top.sort((a, b) => b.w - a.w).slice(0, 8).forEach(({ fi, w }) => {
+                    const np = L.nodePositions[fi];
+                    if (!np) return;
+                    const midY = (np.y + hy) / 2;
+                    L.connectionGroup.append("path")
+                        .attr("class", "connection hub-connection positive highlighted")
+                        .attr("d", `M${np.x},${np.y} Q${np.x},${midY} ${hx},${hy}`)
+                        .attr("stroke-width", Math.min(4, w * 5))
+                        .attr("stroke-opacity", 0.35 + Math.min(0.6, w * 0.7));
+                });
+            }
+        });
+    }
+
+    function updateStepInfo(rec) {
+        const modeLabel = { perceive: 'PERCEIVE', act: 'ACT (outcome disclosed)', probe: rec.goal ? 'PROBE + GOAL LENS' : 'PROBE (sight only)' }[rec.mode];
+        const actionLabel = rec.mode === 'probe' ? (rec.winner >= 0 ? 'MATCH' : 'NO MATCH') : rec.action.toUpperCase();
+        let html = `
+            <div class="info-row"><span class="label">Phase</span><span class="value">${rec.phaseName}</span></div>
+            <div class="info-row"><span class="label">Item</span><span class="value">${rec.item}</span></div>
+            <div class="info-row"><span class="label">Engagement</span><span class="value">${rec.engagement.toFixed(2)}</span></div>
+            <div class="info-row"><span class="label">Mode</span><span class="value">${modeLabel}</span></div>
+            <div class="info-row"><span class="label">Action</span><span class="value ${rec.action || ''}">${actionLabel}</span></div>
+            <div class="info-row"><span class="label">Winner</span><span class="value">${rec.winner >= 0 ? 'Hub ' + rec.winner : '—'}</span></div>`;
+        if (rec.outcome) {
+            html += `<div class="info-row"><span class="label">Outcome</span><span class="value">${rec.outcome.feature}: ${rec.outcome.present ? 'YES' : 'NO'}</span></div>`;
+        }
+        document.getElementById('stepInfo').innerHTML = html;
+
+        const rho = runData.model.p.rho;
+        const s = Math.max(0, rec.sim);
+        const gated = rec.mode === 'act';
+        const passColor = gated ? '#22c55e' : (s >= rho ? '#22c55e' : '#ef4444');
+        document.getElementById('matchInfo').innerHTML = `
+            <h4 style="margin:0 0 6px 0;font-size:0.8rem;color:#94a3b8;">Winner match vs vigilance ${gated ? '<span style="color:#64748b;font-weight:400;">(outcome-gated: &rho; bypassed)</span>' : ''}</h4>
+            <div class="pool-similarity-bar">
+                <span class="name">cosine</span>
+                <div class="bar">
+                    <div class="fill" style="width:${s * 100}%;background:${passColor};"></div>
+                    <div class="threshold" style="left:${rho * 100}%;"></div>
+                </div>
+                <span class="value">${s.toFixed(3)}</span>
+            </div>`;
+
+        // Expectation of the winner: property completion readout
+        const exp = document.getElementById('expectationInfo');
+        if (rec.winner >= 0) {
+            const hub = rec.hubSnapshot.find(h => h.id === rec.winner);
+            const vec = displayVector(rec);
+            const tops = [];
+            ESCF.FEATURES.forEach((f, i) => {
+                if (hub.w[2 * i] > 0.1) tops.push({ name: f.name, w: hub.w[2 * i], completed: vec[2 * i] < 0.01, outcome: f.band === 'outcome' });
+            });
+            tops.sort((a, b) => b.w - a.w);
+            exp.innerHTML = `<h4 style="margin:0 0 6px 0;font-size:0.8rem;color:#94a3b8;">Hub ${rec.winner} expectation <span style="color:#64748b;font-weight:400;">(&#10010; = completed, not in input)</span></h4>` +
+                tops.slice(0, 9).map(t => `
+                    <div class="pool-similarity-bar">
+                        <span class="name" style="${t.completed ? 'color:#22c55e;' : ''}${t.outcome ? 'font-style:italic;' : ''}">${t.completed ? '&#10010; ' : ''}${t.name}</span>
+                        <div class="bar"><div class="fill" style="width:${Math.min(100, t.w * 100)}%;background:${t.completed ? '#22c55e' : 'var(--accent)'};"></div></div>
+                        <span class="value">${t.w.toFixed(2)}</span>
+                    </div>`).join('');
+        } else {
+            exp.innerHTML = rec.mode === 'probe' && rec.goal
+                ? '<div style="font-size:0.75rem;color:#94a3b8;">The goal lens found nothing to amplify — no category matches.</div>'
+                : '';
+        }
+    }
+
+    // ---------- tooltips ----------
+    function featureTooltip(event, d) {
+        const rec = window.currentRec;
+        document.getElementById('tooltip-name').textContent = d.feature;
+        let content = `Band: ${d.band}`;
+        if (rec) {
+            const vec = displayVector(rec);
+            content += `<br>Present unit: ${vec[2 * d.idx].toFixed(2)} · Absent unit: ${vec[2 * d.idx + 1].toFixed(2)}`;
+            if (rec.xGoal) content += `<br>Raw (pre-goal): ${rec.x[2 * d.idx].toFixed(2)}`;
+        }
+        document.getElementById('tooltip-content').innerHTML = content;
+        placeTooltip(event);
+    }
+
+    function hubTooltip(event, h, summ, sim, rec) {
+        document.getElementById('tooltip-name').textContent = `Hub ${h.id}`;
+        const members = summ ? Object.entries(summ.counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ×${v}`).join(', ') : '—';
+        let content = `Trials absorbed: ${h.n}${h.n < 2 ? ' (not yet a category)' : ''}`;
+        if (summ && summ.outcome) content += `<br>Outcome: <strong>${summ.outcome.feature} = ${summ.outcome.present ? 'YES' : 'NO'}</strong>`;
+        content += `<br>Match to current input: ${sim.toFixed(3)}`;
+        content += `<br><span style="color:#94a3b8;">Members: ${members}</span>`;
+        const tops = [];
+        ESCF.FEATURES.forEach((f, i) => { if (h.w[2 * i] > 0.15) tops.push(`${f.name} ${h.w[2 * i].toFixed(2)}`); });
+        content += `<br><span style="color:#64748b;font-size:0.7rem;">${tops.slice(0, 8).join(' · ')}</span>`;
+        document.getElementById('tooltip-content').innerHTML = content;
+        placeTooltip(event);
+    }
+
+    function placeTooltip(event) {
+        const t = document.getElementById('tooltip');
+        const rect = event.target.getBoundingClientRect();
+        const cr = document.getElementById('viz-container').getBoundingClientRect();
+        t.style.left = (rect.right - cr.left + 10) + 'px';
+        t.style.top = (rect.top - cr.top) + 'px';
+        t.classList.add('visible');
+    }
+    function hideTooltip() { document.getElementById('tooltip').classList.remove('visible'); }
+
+    // ---------- hub list ----------
+    function updateHubList() {
+        const container = document.getElementById('hubList');
+        const summ = runData.model.summary();
+        container.innerHTML = summ.map(s => {
+            const members = Object.entries(s.counts).sort((a, b) => b[1] - a[1]);
+            const label = members.map(([k, v]) => `${k}×${v}`).slice(0, 3).join(', ') + (members.length > 3 ? ` +${members.length - 3}` : '');
+            const outcome = s.outcome ? ` <span style="color:#22c55e;">[${s.outcome.feature}=${s.outcome.present ? 'Y' : 'N'}]</span>` : '';
+            return `<div class="hub-item" style="opacity:${s.n < 2 ? 0.45 : 1};">
+                <span class="hub-id" style="color:${hubColors[s.id % 10]}">H${s.id}</span>
+                <span class="members">${label}${outcome}</span>
+            </div>`;
+        }).join('');
+    }
+
+    // ---------- probe panel (Sims 1b & 3, interactive) ----------
+    function populateProbeSelectors() {
+        const items = Object.keys(ESCF.ITEMS);
+        document.getElementById('probeItem').innerHTML = items.map(i => `<option value="${i}">${i}</option>`).join('');
+        const levels = ESCF.DEFAULTS.engagementLevels;
+        document.getElementById('probeEngagement').innerHTML =
+            levels.map((e, i) => `<option value="${e}" ${i === levels.length - 1 ? 'selected' : ''}>${['minimal', 'low', 'medium', 'high', 'full'][i]} (${e.toFixed(2)})</option>`).join('');
+    }
+
+    function runProbe() {
+        if (!runData) return;
+        const item = document.getElementById('probeItem').value;
+        const engagement = parseFloat(document.getElementById('probeEngagement').value);
+        const useGoal = document.getElementById('probeGoal').checked;
+        const model = runData.model;
+        const goalVec = useGoal ? model.goalVector('fends-off') : null;
+        const rec = model.probe(item, engagement, goalVec);
+        rec.phaseName = 'Interactive probe';
+        rec.hubSnapshot = model.hubs.map(h => ({ id: h.id, w: Array.from(h.w), n: h.n }));
+        rec.summary = model.summary();
+        updateFeatureNodes(rec);
+        renderHubs(rec);
+        updateStepInfo(rec);
+        document.getElementById('phasePill').textContent = 'Interactive probe' + (useGoal ? ' — goal lens ON' : '');
+
+        const out = document.getElementById('probeResult');
+        out.style.display = 'block';
+        if (rec.winner < 0) {
+            out.innerHTML = `<strong>${item}</strong> ${useGoal ? 'through the goal lens ' : ''}matches <strong>nothing</strong> — the lens found no affordance to amplify.`;
+            return;
+        }
+        const summ = rec.summary.find(s => s.id === rec.winner);
+        const members = Object.entries(summ.counts).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, 4).join(', ');
+        const hub = rec.hubSnapshot.find(h => h.id === rec.winner);
+        const completed = [];
+        ESCF.FEATURES.forEach((f, i) => {
+            if (hub.w[2 * i] > 0.15 && rec.x[2 * i] < 0.01) completed.push(f.name);
+        });
+        out.innerHTML = `<strong>${item}</strong>${useGoal ? ' + goal' : ''} &rarr; <strong>Hub ${rec.winner}</strong> (${members}) at cosine ${rec.sim.toFixed(3)}.` +
+            (completed.length ? `<br>Completed properties: <span class="completed">${completed.join(', ')}</span>` : '<br>No properties to complete — the cue already carried them.');
+    }
+
+    // ---------- playback ----------
+    function playbackStep(d) { updateStep(currentStep + d); }
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+        if (isPlaying) {
+            btn.textContent = 'Pause';
+            playInterval = setInterval(() => {
+                if (currentStep >= runData.history.length - 1) { togglePlay(); return; }
+                updateStep(currentStep + 1);
+            }, 180);
+        } else {
+            btn.textContent = 'Play';
+            clearInterval(playInterval);
+        }
+    }
+
+    function updateStatus(type, msg) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = msg;
+    }
+
+    window.addEventListener('resize', () => {
+        renderStatic();
+        if (runData) updateStep(currentStep);
+    });
+
+    init();
+</script>
+
+</body>
+</html>

@@ -12,6 +12,7 @@
         { href: '/synthetic_12.html', label: 'Hierarchy Emergence (Synthetic 12, Dropout)', section: 'Unsupervised' },
         { href: '/synthetic_12_decay.html', label: 'Hierarchy Emergence (Corrupted + Decay)', section: 'Unsupervised' },
         { href: '/hierarchical_art.html', label: 'Forced Hierarchical ART', section: 'Unsupervised' },
+        { href: '/escf.html', label: 'ESCF (Perception · Consequence · Goal)', section: 'Unsupervised' },
     ];
 
     const style = document.createElement('style');
