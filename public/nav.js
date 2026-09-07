@@ -5,6 +5,7 @@
         { href: '/', label: 'Home', section: '' },
         { href: '/iac.html', label: 'IAC Visualizer', section: 'Supervised' },
         { href: '/rumelhart.html', label: 'Rumelhart Model', section: 'Supervised' },
+        { href: '/pathfind.html', label: 'IAC Pathfinding (Scenarios ↔ Actions)', section: 'Supervised' },
         { href: '/unsupervised.html', label: 'Concept Learning (Default)', section: 'Unsupervised' },
         { href: '/unsupervised_csv.html', label: 'Concept Learning (CSV)', section: 'Unsupervised' },
         { href: '/sensory_dropout.html', label: 'Hierarchy Emergence ART', section: 'Unsupervised' },

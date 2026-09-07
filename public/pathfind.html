@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IAC Pathfinding — Scenarios &amp; Actions</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        /* Pathfinding page uses cyan accent */
+        :root {
+            --accent: #06b6d4;
+            --accent-dark: #0891b2;
+            --accent-glow: rgba(6, 182, 212, 0.2);
+            --accent-soft: #22d3ee;
+            --sidebar-width: 336px;
+        }
+
+        #sidebar { gap: 14px; }
+        #sidebar h2 { margin: 0 0 4px 0; font-size: 1.4rem; }
+
+        .panel-section {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+        }
+        .panel-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .param-row { display: flex; gap: 8px; }
+        .param-row .param-group { flex: 1; }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-card-2);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-md);
+            color: var(--text-default);
+            font-size: 0.85rem;
+        }
+        select:focus { outline: none; border-color: var(--accent); }
+
+        #genBtn {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+        #genBtn:hover { background: var(--accent-dark); }
+
+        #runBtn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            border: none;
+            border-radius: var(--radius-lg);
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #runBtn:hover { background: linear-gradient(135deg, #059669, #047857); }
+        #runBtn:disabled { background: #374151; cursor: not-allowed; }
+
+        .endpoint-tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin: 2px;
+        }
+        .endpoint-tag.source { background: var(--success); color: var(--bg-card); }
+        .endpoint-tag.target { background: var(--warning); color: var(--bg-card); }
+
+        #pathResult { font-size: 0.82rem; line-height: 1.55; color: var(--text-muted); }
+        #pathResult .found { color: var(--success); font-weight: 600; }
+        #pathResult .notfound { color: var(--danger); font-weight: 600; }
+        #pathResult .path-chain { color: var(--accent-soft); font-family: monospace; }
+
+        .scrubber-section { margin-top: auto; }
+
+        .connection { stroke: var(--success); stroke-opacity: 0.45; }
+        .connection.dimmed { stroke-opacity: 0.08; }
+        .connection.highlighted { stroke-opacity: 1; }
+        .connection.on-path { stroke: var(--warning); stroke-opacity: 1; }
+
+        .node-shape { stroke: var(--border-strong); stroke-width: 2px; cursor: pointer; transition: stroke 0.15s; }
+        .node-shape:hover { stroke: var(--accent-soft); stroke-width: 3px; }
+        .node-shape.clamped-source { stroke: var(--success); stroke-width: 4px; }
+        .node-shape.clamped-target { stroke: var(--warning); stroke-width: 4px; }
+        .node-shape.on-path { stroke: var(--warning); stroke-width: 3.5px; }
+        .node-shape.dimmed { opacity: 0.3; }
+        .node-label { font-size: 11px; text-anchor: middle; pointer-events: none; }
+
+        .legend-shapes { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; display: flex; gap: 14px; }
+        .legend-shapes .swatch { display: inline-block; width: 11px; height: 11px; background: var(--border-strong); vertical-align: -1px; margin-right: 4px; }
+        .legend-shapes .swatch.circle { border-radius: 50%; }
+        .legend-shapes .swatch.square { border-radius: 2px; }
+
+        .tooltip-activation { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
+        .tooltip-activation span { font-weight: 600; color: var(--accent); }
+        .tooltip-connection-item {
+            display: inline-block;
+            padding: 2px 6px;
+            background: var(--border-mid);
+            border-radius: 3px;
+            margin: 2px;
+            font-size: 0.75rem;
+            color: var(--text-default);
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div style="display: flex; gap: 16px; margin-bottom: 4px;">
+        <a href="/" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">&larr; Home</a>
+        <a href="/iac.html" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">IAC Visualizer</a>
+    </div>
+    <h2>IAC Pathfinding</h2>
+    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+        Random bipartite graph of scenarios (circles) and actions (squares).
+        Click two nodes to clamp them, then run &mdash; does activation intrinsically
+        find a path between them?
+    </p>
+
+    <div class="panel-section">
+        <h4>Network</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Scenarios (X)</label>
+                <input type="number" id="numScenarios" value="6" min="2" max="30">
+            </div>
+            <div class="param-group">
+                <label>Actions (Y)</label>
+                <input type="number" id="numActions" value="8" min="2" max="30">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Connection Density</label>
+                <input type="number" id="density" value="0.2" step="any" data-arrow-step="0.05" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Seed</label>
+                <input type="number" id="seed" value="42" min="0">
+            </div>
+        </div>
+        <div class="param-group">
+            <label>Max Connections per Node (0 = unlimited)</label>
+            <input type="number" id="maxConnections" value="0" min="0" max="30">
+        </div>
+        <div class="param-group">
+            <label>Hub Weights</label>
+            <select id="weightMode">
+                <option value="uniform">Uniform (all equal)</option>
+                <option value="random">Random per connection</option>
+            </select>
+        </div>
+        <button id="genBtn" onclick="generateNetwork(true)">Generate Network</button>
+    </div>
+
+    <div class="panel-section">
+        <h4>Dynamics</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Excitatory</label>
+                <input type="number" id="exc" value="0.1" step="any" data-arrow-step="0.01" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Inhibitory</label>
+                <input type="number" id="inh" value="-0.05" step="any" data-arrow-step="0.01" min="-1" max="0">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Decay</label>
+                <input type="number" id="dec" value="0.05" step="any" data-arrow-step="0.01" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Steps</label>
+                <input type="number" id="steps" value="200" min="1" max="1000">
+            </div>
+        </div>
+    </div>
+
+    <button id="runBtn" onclick="runSimulation()">RUN SIMULATION</button>
+
+    <div class="panel-section">
+        <h4>Clamped Endpoints</h4>
+        <div id="clampedList" style="font-size: 0.82rem; color: var(--text-muted);">Click two nodes on the graph</div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Path Analysis</h4>
+        <div class="param-group" style="margin-bottom: 8px;">
+            <label>Activation Threshold</label>
+            <input type="number" id="threshold" value="0.1" step="any" data-arrow-step="0.05" min="-0.2" max="1">
+        </div>
+        <div id="pathResult">Run a simulation to analyze.</div>
+    </div>
+
+    <div id="status" class="status">Loading network...</div>
+
+    <div class="scrubber-section">
+        <label>
+            <span>Time Step</span>
+            <span id="stepLabel">0 / 0</span>
+        </label>
+        <input type="range" id="scrubber" min="0" max="0" value="0" oninput="updateStep(parseInt(this.value))">
+        <div class="playback-controls">
+            <button onclick="playbackStep(-10)">-10</button>
+            <button onclick="playbackStep(-1)">-1</button>
+            <button onclick="togglePlay()" id="playBtn">Play</button>
+            <button onclick="playbackStep(1)">+1</button>
+            <button onclick="playbackStep(10)">+10</button>
+        </div>
+    </div>
+</div>
+
+<div id="viz-container">
+    <svg id="canvas"></svg>
+    <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+    <div id="tooltip" class="tooltip">
+        <div class="tooltip-header" id="tooltip-name"></div>
+        <div class="tooltip-activation">Activation: <span id="tooltip-activation">0.000</span></div>
+        <div style="font-size: 0.8rem; color: var(--text-muted);">
+            <div style="margin-bottom: 4px;">Connections (weight):</div>
+            <div id="tooltip-connections-list"></div>
+        </div>
+    </div>
+    <div class="legend">
+        <h4>Activation Level</h4>
+        <div class="legend-gradient" id="legendGradient"></div>
+        <div class="legend-labels">
+            <span>-0.2</span>
+            <span>0</span>
+            <span>1.0</span>
+        </div>
+        <div class="legend-shapes">
+            <span><span class="swatch circle"></span>Scenario</span>
+            <span><span class="swatch square"></span>Action</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // State
+    let networkData = null;
+    let simData = null;
+    let clamped = [];          // [source, target] node names, in click order
+    let currentStep = 0;
+    let isPlaying = false;
+    let playInterval = null;
+    let nodePositions = {};
+    let adjacency = {};        // node -> [{target, weight}]
+    let simulation = null;
+
+    const svg = d3.select("#canvas");
+    let g;
+    let zoomBehavior;
+
+    const activationColor = d3.scaleSequential()
+        .domain([-0.2, 1.0])
+        .interpolator(t => {
+            if (t < 0.167) {
+                return d3.interpolateRgb("#ef4444", "#4b5563")(t / 0.167);
+            }
+            return d3.interpolateRgb("#4b5563", "#22c55e")((t - 0.167) / 0.833);
+        });
+
+    function getNetworkParams() {
+        return {
+            numScenarios: parseInt(document.getElementById('numScenarios').value),
+            numActions: parseInt(document.getElementById('numActions').value),
+            density: parseFloat(document.getElementById('density').value),
+            seed: parseInt(document.getElementById('seed').value),
+            maxConnections: parseInt(document.getElementById('maxConnections').value) || 0,
+            weightMode: document.getElementById('weightMode').value,
+            excitatory: parseFloat(document.getElementById('exc').value),
+            inhibitory: parseFloat(document.getElementById('inh').value),
+            decay: parseFloat(document.getElementById('dec').value),
+            steps: parseInt(document.getElementById('steps').value)
+        };
+    }
+
+    async function generateNetwork(clearSelection) {
+        updateStatus('running', 'Generating network...');
+        try {
+            const res = await fetch('/pathfind-network', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ params: getNetworkParams() })
+            });
+            networkData = await res.json();
+            if (networkData.error) throw new Error(networkData.error);
+
+            adjacency = {};
+            networkData.nodes.forEach(n => adjacency[n] = []);
+            networkData.connections.forEach(c => {
+                adjacency[c.source].push({ target: c.target, weight: c.weight });
+                adjacency[c.target].push({ target: c.source, weight: c.weight });
+            });
+
+            if (clearSelection) clamped = [];
+            simData = null;
+            currentStep = 0;
+            document.getElementById('scrubber').max = 0;
+            document.getElementById('stepLabel').textContent = '0 / 0';
+            document.getElementById('pathResult').textContent = 'Run a simulation to analyze.';
+
+            renderNetwork();
+            updateClampedList();
+            updateStatus('ready', `${networkData.scenarios.length} scenarios, ${networkData.actions.length} actions, ${networkData.connections.length} connections`);
+        } catch (e) {
+            console.error(e);
+            updateStatus('error', 'Failed to generate network — is the server running?');
+        }
+    }
+
+    function setupZoom() {
+        zoomBehavior = d3.zoom()
+            .scaleExtent([0.3, 3])
+            .on("zoom", (event) => g.attr("transform", event.transform));
+        svg.call(zoomBehavior);
+        g = svg.append("g");
+    }
+
+    function resetView() {
+        svg.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    function setupLegendGradient() {
+        document.getElementById('legendGradient').style.background =
+            'linear-gradient(to right, #ef4444 0%, #4b5563 17%, #22c55e 100%)';
+    }
+
+    // Obsidian-style force-directed layout: connected nodes attract (stronger
+    // weight = shorter link), everything repels, so clusters emerge from topology.
+    function renderNetwork() {
+        if (!networkData) return;
+
+        const container = document.getElementById('viz-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        svg.attr("width", width).attr("height", height);
+        g.selectAll("*").remove();
+        if (simulation) simulation.stop();
+
+        const nodes = networkData.nodes.map(name => ({
+            id: name,
+            type: networkData.node_types[name]
+        }));
+        nodePositions = {};
+        nodes.forEach(n => nodePositions[n.id] = n);
+
+        const maxW = Math.max(...networkData.connections.map(c => c.weight), 0.001);
+        const links = networkData.connections.map(c => ({
+            source: c.source, target: c.target, weight: c.weight
+        }));
+
+        const linkSel = g.append("g").selectAll("line")
+            .data(links)
+            .enter().append("line")
+            .attr("class", "connection")
+            .attr("stroke-width", d => 0.5 + 2.5 * (d.weight / maxW));
+
+        const nodeSel = g.append("g").selectAll("g")
+            .data(nodes)
+            .enter().append("g");
+
+        nodeSel.each(function (d) {
+            const gEl = d3.select(this);
+            const shape = d.type === 'scenario'
+                ? gEl.append("circle").attr("r", 15)
+                : gEl.append("rect")
+                    .attr("x", -13).attr("y", -13)
+                    .attr("width", 26).attr("height", 26).attr("rx", 5);
+            shape
+                .attr("class", "node-shape")
+                .attr("id", `node-${d.id}`)
+                .attr("fill", "#4b5563")
+                .on("click", (event) => { event.stopPropagation(); toggleClamp(d.id); })
+                .on("mouseenter", (event) => handleHover(event, d.id, true))
+                .on("mouseleave", (event) => handleHover(event, d.id, false));
+
+            gEl.append("text")
+                .attr("class", "node-label")
+                .attr("y", 30)
+                .text(d.id);
+        });
+
+        nodeSel.call(d3.drag()
+            .on("start", (event, d) => {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x; d.fy = d.y;
+            })
+            .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+            .on("end", (event, d) => {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null; d.fy = null;
+            }));
+
+        simulation = d3.forceSimulation(nodes)
+            .force("link", d3.forceLink(links).id(d => d.id)
+                .distance(d => 70 + (1 - d.weight / maxW) * 70)
+                .strength(d => 0.3 + 0.7 * (d.weight / maxW)))
+            .force("charge", d3.forceManyBody().strength(-400))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collide", d3.forceCollide(36))
+            .on("tick", () => {
+                linkSel
+                    .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                nodeSel.attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+
+        // forceLink resolved source/target to node objects; set the string
+        // attrs the hover/path-highlight code matches against.
+        linkSel
+            .attr("data-source", d => d.source.id)
+            .attr("data-target", d => d.target.id);
+
+        refreshClampClasses();
+    }
+
+    function toggleClamp(name) {
+        const idx = clamped.indexOf(name);
+        if (idx !== -1) {
+            clamped.splice(idx, 1);
+        } else if (clamped.length < 2) {
+            clamped.push(name);
+        } else {
+            updateStatus('error', 'Two nodes already clamped — deselect one first');
+            return;
+        }
+        refreshClampClasses();
+        updateClampedList();
+    }
+
+    function refreshClampClasses() {
+        d3.selectAll('.node-shape').classed('clamped-source', false).classed('clamped-target', false);
+        if (clamped[0]) d3.select(`#node-${clamped[0]}`).classed('clamped-source', true);
+        if (clamped[1]) d3.select(`#node-${clamped[1]}`).classed('clamped-target', true);
+    }
+
+    function updateClampedList() {
+        const el = document.getElementById('clampedList');
+        if (clamped.length === 0) {
+            el.innerHTML = 'Click two nodes on the graph';
+        } else {
+            el.innerHTML =
+                (clamped[0] ? `<span class="endpoint-tag source">${clamped[0]}</span>` : '') +
+                (clamped[1] ? ` &rarr; <span class="endpoint-tag target">${clamped[1]}</span>` : ' <span style="color: var(--text-dim);">+ pick a second node</span>');
+        }
+    }
+
+    function handleHover(event, name, entering) {
+        const tooltip = document.getElementById('tooltip');
+        if (entering) {
+            document.getElementById('tooltip-name').textContent =
+                `${name} (${networkData.node_types[name]})`;
+            let activation = 0;
+            if (simData) {
+                activation = simData.history[currentStep][simData.idx_lookup[name]];
+            }
+            document.getElementById('tooltip-activation').textContent = activation.toFixed(4);
+
+            const conns = adjacency[name] || [];
+            document.getElementById('tooltip-connections-list').innerHTML = conns.length
+                ? conns.map(c => `<span class="tooltip-connection-item">${c.target} (${c.weight.toFixed(3)})</span>`).join('')
+                : '<span style="color: #64748b;">None</span>';
+
+            const rect = event.target.getBoundingClientRect();
+            const container = document.getElementById('viz-container').getBoundingClientRect();
+            tooltip.style.left = (rect.right - container.left + 10) + 'px';
+            tooltip.style.top = (rect.top - container.top) + 'px';
+            tooltip.classList.add('visible');
+
+            d3.selectAll('.connection').classed('dimmed', true);
+            d3.selectAll('.node-shape').classed('dimmed', true);
+            d3.select(`#node-${name}`).classed('dimmed', false);
+            conns.forEach(c => d3.select(`#node-${c.target}`).classed('dimmed', false));
+            d3.selectAll('.connection').each(function () {
+                const el = d3.select(this);
+                if (el.attr('data-source') === name || el.attr('data-target') === name) {
+                    el.classed('dimmed', false).classed('highlighted', true);
+                }
+            });
+        } else {
+            tooltip.classList.remove('visible');
+            d3.selectAll('.connection').classed('dimmed', false).classed('highlighted', false);
+            d3.selectAll('.node-shape').classed('dimmed', false);
+        }
+    }
+
+    async function runSimulation() {
+        if (clamped.length !== 2) {
+            updateStatus('error', 'Clamp exactly two nodes first');
+            return;
+        }
+        const btn = document.getElementById('runBtn');
+        btn.disabled = true;
+        btn.textContent = 'RUNNING...';
+        updateStatus('running', 'Running simulation (Python backend)...');
+
+        try {
+            const res = await fetch('/pathfind-run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ params: getNetworkParams(), clampedNodes: clamped })
+            });
+            simData = await res.json();
+            if (simData.error) throw new Error(simData.error);
+
+            const scrubber = document.getElementById('scrubber');
+            scrubber.max = simData.history.length - 1;
+            updateStep(simData.history.length - 1);
+            updateStatus('ready', `Simulation complete — ${simData.history.length} steps`);
+        } catch (e) {
+            console.error(e);
+            simData = null;
+            updateStatus('error', 'Simulation failed — is the server running?');
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'RUN SIMULATION';
+    }
+
+    // BFS over the full graph (ground truth) or the active subgraph at a step.
+    function bfsPath(source, target, nodeAllowed) {
+        const prev = { [source]: null };
+        const queue = [source];
+        while (queue.length) {
+            const cur = queue.shift();
+            if (cur === target) {
+                const path = [];
+                for (let n = target; n !== null; n = prev[n]) path.unshift(n);
+                return path;
+            }
+            for (const { target: next } of adjacency[cur] || []) {
+                if (!(next in prev) && nodeAllowed(next)) {
+                    prev[next] = cur;
+                    queue.push(next);
+                }
+            }
+        }
+        return null;
+    }
+
+    function analyzePath(step) {
+        const el = document.getElementById('pathResult');
+        d3.selectAll('.connection').classed('on-path', false);
+        d3.selectAll('.node-shape').classed('on-path', false);
+
+        if (!simData || clamped.length !== 2) {
+            el.textContent = 'Run a simulation to analyze.';
+            return;
+        }
+
+        const [source, target] = clamped;
+        const threshold = parseFloat(document.getElementById('threshold').value);
+        const acts = simData.history[step];
+        const idx = simData.idx_lookup;
+
+        const structural = bfsPath(source, target, () => true);
+        const active = bfsPath(source, target,
+            n => n === source || n === target || acts[idx[n]] >= threshold);
+
+        let html = structural
+            ? `Structural path exists (${structural.length - 1} hops).<br>`
+            : `<span class="notfound">No structural path exists</span> — the graph is disconnected between these nodes.<br>`;
+
+        if (active) {
+            html += `<span class="found">IAC path found at step ${step}:</span><br><span class="path-chain">${active.join(' → ')}</span>`;
+            for (let i = 0; i < active.length - 1; i++) {
+                const a = active[i], b = active[i + 1];
+                d3.selectAll('.connection').each(function () {
+                    const e = d3.select(this);
+                    const s = e.attr('data-source'), t = e.attr('data-target');
+                    if ((s === a && t === b) || (s === b && t === a)) e.classed('on-path', true);
+                });
+                d3.select(`#node-${active[i]}`).classed('on-path', true);
+            }
+        } else {
+            html += `<span class="notfound">No active path at step ${step}</span> (no chain of nodes ≥ ${threshold} links the endpoints).`;
+        }
+        el.innerHTML = html;
+    }
+
+    function updateStep(step) {
+        if (!simData) return;
+        step = Math.max(0, Math.min(step, simData.history.length - 1));
+        currentStep = step;
+
+        document.getElementById('scrubber').value = step;
+        document.getElementById('stepLabel').textContent = `${step} / ${simData.history.length - 1}`;
+
+        const acts = simData.history[step];
+        Object.keys(nodePositions).forEach(name => {
+            const a = acts[simData.idx_lookup[name]];
+            const shape = d3.select(`#node-${name}`);
+            shape.attr("fill", activationColor(a));
+            if (nodePositions[name].type === 'scenario') {
+                shape.attr("r", 15 + Math.max(0, a) * 6);
+            }
+        });
+        analyzePath(step);
+    }
+
+    function playbackStep(delta) { updateStep(currentStep + delta); }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+        if (isPlaying) {
+            btn.textContent = 'Pause';
+            playInterval = setInterval(() => {
+                if (!simData) return;
+                if (currentStep >= simData.history.length - 1) currentStep = -1;
+                updateStep(currentStep + 1);
+            }, 50);
+        } else {
+            btn.textContent = 'Play';
+            clearInterval(playInterval);
+        }
+    }
+
+    function updateStatus(type, message) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = message;
+    }
+
+    document.getElementById('threshold').addEventListener('input', () => analyzePath(currentStep));
+
+    window.addEventListener('resize', () => {
+        if (networkData) {
+            renderNetwork();
+            if (simData) updateStep(currentStep);
+        }
+    });
+
+    setupZoom();
+    setupLegendGradient();
+    generateNetwork(true);
+</script>
+
+<script src="/nav.js"></script>
+</body>
+</html>

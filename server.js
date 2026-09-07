@@ -47,6 +47,16 @@ app.post('/run-simulation', (req, res) => {
     runPythonBridge('iac_bridge.py', ['run', JSON.stringify(selectedNodes), JSON.stringify(params)], res);
 });
 
+// ---- Scenario/Action pathfinding IAC (Python-backed, network regenerated from seed) ----
+app.post('/pathfind-network', (req, res) => {
+    runPythonBridge('pathfind_bridge.py', ['network', JSON.stringify(req.body.params)], res);
+});
+
+app.post('/pathfind-run', (req, res) => {
+    const { params, clampedNodes } = req.body;
+    runPythonBridge('pathfind_bridge.py', ['run', JSON.stringify(params), JSON.stringify(clampedNodes)], res);
+});
+
 app.listen(port, () => {
     console.log(`\nIAC Network Models running at http://localhost:${port}`);
     console.log(`\nAvailable models:`);
@@ -60,5 +70,6 @@ app.listen(port, () => {
     console.log(`  - Hierarchy Emergence (Synthetic 12, Dropout): http://localhost:${port}/synthetic_12.html`);
     console.log(`  - Hierarchy Emergence (Corrupted + Decay): http://localhost:${port}/synthetic_12_decay.html`);
     console.log(`  - Forced Hierarchical ART: http://localhost:${port}/hierarchical_art.html`);
-    console.log(`  - ESCF (Perception · Consequence · Goal): http://localhost:${port}/escf.html\n`);
+    console.log(`  - ESCF (Perception · Consequence · Goal): http://localhost:${port}/escf.html`);
+    console.log(`  - IAC Pathfinding:         http://localhost:${port}/pathfind.html\n`);
 });
