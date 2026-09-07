@@ -75,6 +75,20 @@
         #runBtn:hover { background: linear-gradient(135deg, #059669, #047857); }
         #runBtn:disabled { background: #374151; cursor: not-allowed; }
 
+        #shareBtn {
+            width: 100%;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid var(--accent);
+            border-radius: var(--radius-md);
+            color: var(--accent-soft);
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #shareBtn:hover { background: var(--accent-glow); }
+
         .endpoint-tag {
             display: inline-block;
             padding: 4px 10px;
@@ -93,7 +107,8 @@
 
         .scrubber-section { margin-top: auto; }
 
-        .connection { stroke: var(--success); stroke-opacity: 0.45; }
+        /* Base stroke color comes from a presentation attribute set in JS
+           (grey -> green with activation flow), so CSS classes below still win. */
         .connection.dimmed { stroke-opacity: 0.08; }
         .connection.highlighted { stroke-opacity: 1; }
         .connection.on-path { stroke: var(--warning); stroke-opacity: 1; }
@@ -196,9 +211,24 @@
                 <input type="number" id="steps" value="200" min="1" max="1000">
             </div>
         </div>
+        <div class="param-group">
+            <label>Inhibition Mode</label>
+            <select id="inhibitionMode">
+                <option value="sibling">Sibling: only nodes sharing a neighbor compete</option>
+                <option value="global">Global: all same-type nodes compete</option>
+            </select>
+        </div>
+        <div class="param-group">
+            <label>Output Rule</label>
+            <select id="rectify">
+                <option value="true">Canonical: only active units transmit ([a]+)</option>
+                <option value="false">Raw: negative activations transmit too</option>
+            </select>
+        </div>
     </div>
 
     <button id="runBtn" onclick="runSimulation()">RUN SIMULATION</button>
+    <button id="shareBtn" onclick="shareLink()">Copy Share Link</button>
 
     <div class="panel-section">
         <h4>Clamped Endpoints</h4>
@@ -255,6 +285,9 @@
             <span><span class="swatch circle"></span>Scenario</span>
             <span><span class="swatch square"></span>Action</span>
         </div>
+        <div class="legend-shapes" style="margin-top: 4px;">
+            <span>Edges: <span style="color: #6b7280;">grey</span> = quiet &rarr; <span style="color: var(--success);">green</span> = carrying activation</span>
+        </div>
     </div>
 </div>
 
@@ -274,6 +307,8 @@
     let g;
     let zoomBehavior;
 
+    const edgeFlowColor = d3.interpolateRgb("#4b5563", "#22c55e");
+
     const activationColor = d3.scaleSequential()
         .domain([-0.2, 1.0])
         .interpolator(t => {
@@ -283,6 +318,35 @@
             return d3.interpolateRgb("#4b5563", "#22c55e")((t - 0.167) / 0.833);
         });
 
+    const PARAM_IDS = ['numScenarios', 'numActions', 'density', 'seed', 'maxConnections',
+        'weightMode', 'exc', 'inh', 'dec', 'steps', 'rectify', 'inhibitionMode'];
+
+    function applyParamsFromURL() {
+        const q = new URLSearchParams(location.search);
+        PARAM_IDS.forEach(id => {
+            if (q.has(id)) document.getElementById(id).value = q.get(id);
+        });
+        const clamp = q.get('clamp');
+        if (clamp) clamped = clamp.split(',').filter(Boolean).slice(0, 2);
+    }
+
+    function syncURL() {
+        const q = new URLSearchParams();
+        PARAM_IDS.forEach(id => q.set(id, document.getElementById(id).value));
+        if (clamped.length) q.set('clamp', clamped.join(','));
+        history.replaceState(null, '', `${location.pathname}?${q}`);
+    }
+
+    async function shareLink() {
+        syncURL();
+        try {
+            await navigator.clipboard.writeText(location.href);
+            updateStatus('ready', 'Share link copied to clipboard');
+        } catch (e) {
+            prompt('Copy this link:', location.href);
+        }
+    }
+
     function getNetworkParams() {
         return {
             numScenarios: parseInt(document.getElementById('numScenarios').value),
@@ -291,6 +355,8 @@
             seed: parseInt(document.getElementById('seed').value),
             maxConnections: parseInt(document.getElementById('maxConnections').value) || 0,
             weightMode: document.getElementById('weightMode').value,
+            rectify: document.getElementById('rectify').value === 'true',
+            inhibitionMode: document.getElementById('inhibitionMode').value,
             excitatory: parseFloat(document.getElementById('exc').value),
             inhibitory: parseFloat(document.getElementById('inh').value),
             decay: parseFloat(document.getElementById('dec').value),
@@ -317,6 +383,7 @@
             });
 
             if (clearSelection) clamped = [];
+            clamped = clamped.filter(n => networkData.nodes.includes(n));
             simData = null;
             currentStep = 0;
             document.getElementById('scrubber').max = 0;
@@ -325,6 +392,7 @@
 
             renderNetwork();
             updateClampedList();
+            syncURL();
             updateStatus('ready', `${networkData.scenarios.length} scenarios, ${networkData.actions.length} actions, ${networkData.connections.length} connections`);
         } catch (e) {
             console.error(e);
@@ -377,6 +445,8 @@
             .data(links)
             .enter().append("line")
             .attr("class", "connection")
+            .attr("stroke", "#4b5563")
+            .attr("stroke-opacity", 0.45)
             .attr("stroke-width", d => 0.5 + 2.5 * (d.weight / maxW));
 
         const nodeSel = g.append("g").selectAll("g")
@@ -421,6 +491,9 @@
                 .strength(d => 0.3 + 0.7 * (d.weight / maxW)))
             .force("charge", d3.forceManyBody().strength(-400))
             .force("center", d3.forceCenter(width / 2, height / 2))
+            // Weak pull toward center keeps disconnected islands on screen.
+            .force("x", d3.forceX(width / 2).strength(0.06))
+            .force("y", d3.forceY(height / 2).strength(0.08))
             .force("collide", d3.forceCollide(36))
             .on("tick", () => {
                 linkSel
@@ -530,6 +603,7 @@
             const scrubber = document.getElementById('scrubber');
             scrubber.max = simData.history.length - 1;
             updateStep(simData.history.length - 1);
+            syncURL();
             updateStatus('ready', `Simulation complete — ${simData.history.length} steps`);
         } catch (e) {
             console.error(e);
@@ -619,6 +693,18 @@
                 shape.attr("r", 15 + Math.max(0, a) * 6);
             }
         });
+
+        // Edge color tracks the activation flowing through it: grey when the
+        // endpoints are quiet, green as they activate.
+        d3.selectAll('.connection').each(function () {
+            const el = d3.select(this);
+            const s = Math.max(0, acts[simData.idx_lookup[el.attr('data-source')]]);
+            const t = Math.max(0, acts[simData.idx_lookup[el.attr('data-target')]]);
+            const flow = Math.min(1, (s + t) / 2);
+            el.attr('stroke', edgeFlowColor(flow))
+                .attr('stroke-opacity', 0.3 + 0.7 * flow);
+        });
+
         analyzePath(step);
     }
 
@@ -657,7 +743,8 @@
 
     setupZoom();
     setupLegendGradient();
-    generateNetwork(true);
+    applyParamsFromURL();
+    generateNetwork(false);
 </script>
 
 <script src="/nav.js"></script>

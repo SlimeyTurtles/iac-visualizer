@@ -13,10 +13,12 @@ class PathfindIACModel:
 
     def __init__(self, num_scenarios, num_actions, density=0.25, seed=42,
                  weight_mode='uniform', excitatory=0.1, inhibitory=-0.05,
-                 decay=0.05, max_connections=0):
+                 decay=0.05, max_connections=0, rectify=True,
+                 inhibition_mode='sibling'):
         self.max_a = 1.0
         self.min_a = -0.2
         self.decay_w = decay
+        self.rectify = rectify
 
         rng = random.Random(seed)
         self.scenarios = [f"S{i + 1}" for i in range(num_scenarios)]
@@ -78,17 +80,36 @@ class PathfindIACModel:
                 "type": "excitatory",
             })
 
-        for pool in (self.scenarios, self.actions):
-            idxs = [self.idx_lookup[name] for name in pool]
-            for i in idxs:
-                for j in idxs:
-                    if i != j:
-                        self.weights[i, j] = inhibitory
+        if inhibition_mode == 'sibling':
+            # Local competition: each action's connected scenarios form a pool
+            # (they compete to claim that action), and each scenario's connected
+            # actions form a pool (they compete to serve that scenario). Nodes
+            # sharing no neighbor never inhibit each other.
+            pools = {}
+            for s, a in edges:
+                pools.setdefault(('a', a), []).append(self.idx_lookup[self.scenarios[s]])
+                pools.setdefault(('s', s), []).append(self.idx_lookup[self.actions[a]])
+            for members in pools.values():
+                for i in members:
+                    for j in members:
+                        if i != j:
+                            self.weights[i, j] = inhibitory
+        else:  # 'global': classic IAC — the two node types are the pools
+            for pool in (self.scenarios, self.actions):
+                idxs = [self.idx_lookup[name] for name in pool]
+                for i in idxs:
+                    for j in idxs:
+                        if i != j:
+                            self.weights[i, j] = inhibitory
 
         self.activations = torch.zeros(self.n)
 
     def step(self, external_input_vector):
-        net_input = torch.mv(self.weights, self.activations) + external_input_vector
+        # Canonical IAC (PDP handbook eq 2.1): units transmit output = [a]+,
+        # so zero/negative-activation units send nothing. rectify=False keeps
+        # the legacy behavior where raw activations transmit.
+        output = torch.clamp(self.activations, min=0.0) if self.rectify else self.activations
+        net_input = torch.mv(self.weights, output) + external_input_vector
 
         pos_mask = (net_input > 0).float()
         neg_mask = (net_input <= 0).float()

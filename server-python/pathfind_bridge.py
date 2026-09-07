@@ -14,6 +14,8 @@ def build_model(params):
         inhibitory=float(params['inhibitory']),
         decay=float(params['decay']),
         max_connections=int(params.get('maxConnections', 0)),
+        rectify=bool(params.get('rectify', True)),
+        inhibition_mode=params.get('inhibitionMode', 'sibling'),
     )
 
 
