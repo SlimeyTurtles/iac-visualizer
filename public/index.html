@@ -108,6 +108,8 @@
 
         .iac     { --accent: #38bdf8; }
         .pathf   { --accent: #06b6d4; }
+        .pathpe  { --accent: #ec4899; }
+        .pathart { --accent: #f97316; }
         .rumel   { --accent: #a78bfa; }
         .unsup   { --accent: #f59e0b; }
         .csv     { --accent: #fb7185; }
@@ -145,6 +147,16 @@
         <a href="/pathfind.html" class="model-link pathf new">
             <h3>IAC Pathfinding <span class="tag">New</span></h3>
             <p>Randomly connected scenario &harr; action graph. Clamp two nodes and test whether plain IAC dynamics intrinsically find a path between them through spreading activation.</p>
+        </a>
+
+        <a href="/pathfind_pe.html" class="model-link pathpe new">
+            <h3>IAC Pathfinding + Positional Encoding <span class="tag">New</span></h3>
+            <p>Geometry-first variant: nodes get position vectors, connections follow nearest-neighbor similarity, and goal-directed inhibition lets competition itself route a plan between two clamped scenarios.</p>
+        </a>
+
+        <a href="/pathfind_art.html" class="model-link pathart new">
+            <h3>ART Pathfinding (Recall-Based) <span class="tag">New</span></h3>
+            <p>ESCF-style planning: an ART layer learns state hubs (vigilance = abstraction dial), hubs link to successor hubs, and best-first recursive recall &mdash; scored by cosine to the goal &mdash; searches until the goal hub resonates.</p>
         </a>
     </div>
 

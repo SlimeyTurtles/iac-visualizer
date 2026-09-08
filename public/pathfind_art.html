@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ART Pathfinding — Recall-Based Planning</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        /* ART pathfinding page uses orange accent */
+        :root {
+            --accent: #f97316;
+            --accent-dark: #ea580c;
+            --accent-glow: rgba(249, 115, 22, 0.2);
+            --accent-soft: #fb923c;
+            --sidebar-width: 336px;
+        }
+
+        #sidebar { gap: 14px; }
+        #sidebar h2 { margin: 0 0 4px 0; font-size: 1.4rem; }
+
+        .panel-section {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+        }
+        .panel-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .param-row { display: flex; gap: 8px; }
+        .param-row .param-group { flex: 1; }
+
+        #genBtn {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+        #genBtn:hover { background: var(--accent-dark); }
+
+        #runBtn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            border: none;
+            border-radius: var(--radius-lg);
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #runBtn:hover { background: linear-gradient(135deg, #059669, #047857); }
+        #runBtn:disabled { background: #374151; cursor: not-allowed; }
+
+        #shareBtn {
+            width: 100%;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid var(--accent);
+            border-radius: var(--radius-md);
+            color: var(--accent-soft);
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #shareBtn:hover { background: var(--accent-glow); }
+
+        .endpoint-tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin: 2px;
+        }
+        .endpoint-tag.source { background: var(--success); color: var(--bg-card); }
+        .endpoint-tag.target { background: var(--warning); color: var(--bg-card); }
+
+        .scrubber-section { margin-top: auto; }
+
+        #searchLog {
+            font-size: 0.76rem;
+            line-height: 1.5;
+            color: var(--text-muted);
+            max-height: 180px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+        #searchLog .log-line { padding: 1px 6px; border-radius: 3px; cursor: pointer; }
+        #searchLog .log-line.current { background: var(--accent-glow); color: var(--accent-soft); }
+        #searchLog .log-line.goal { color: var(--success); font-weight: 700; }
+        #searchLog .log-line.backtrack { color: var(--danger); }
+
+        .connection { stroke: #4b5563; stroke-opacity: 0.4; }
+        .connection.dimmed { stroke-opacity: 0.08; }
+        .connection.highlighted { stroke-opacity: 1; stroke: var(--accent-soft); }
+        .connection.on-path { stroke: var(--warning); stroke-opacity: 1; stroke-width: 3px; }
+
+        .node-shape { stroke: var(--border-strong); stroke-width: 2px; cursor: pointer; }
+        .node-shape:hover { stroke: var(--accent-soft); stroke-width: 3px; }
+        .node-shape.clamped-source { stroke: var(--success); stroke-width: 4px; }
+        .node-shape.clamped-target { stroke: var(--warning); stroke-width: 4px; }
+        .node-shape.visited { stroke: var(--accent-soft); stroke-width: 3px; }
+        .node-shape.current-hub {
+            stroke: #ffffff;
+            stroke-width: 5px;
+            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.9));
+        }
+        .score-badge {
+            fill: var(--accent-soft);
+            font-size: 13px;
+            font-weight: 700;
+            text-anchor: middle;
+            paint-order: stroke;
+            stroke: #0b1220;
+            stroke-width: 3.5px;
+            pointer-events: none;
+        }
+        .node-shape.dead { stroke: var(--danger); stroke-width: 3px; opacity: 0.75; }
+        .node-shape.on-path { stroke: var(--warning); stroke-width: 4px; }
+        .node-shape.dimmed { opacity: 0.3; }
+        .node-label { font-size: 11px; text-anchor: middle; pointer-events: none; }
+        .hub-label { font-size: 9px; text-anchor: middle; pointer-events: none; fill: var(--text-dim); }
+
+        .legend-shapes { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; display: flex; gap: 14px; flex-wrap: wrap; }
+
+        /* Split view: network left, live hub-and-spoke right */
+        #viz-container { display: flex; }
+        #netPane { flex: 1; position: relative; min-width: 0; }
+        #hubPane {
+            width: 400px;
+            border-left: 1px solid var(--border-soft);
+            background: var(--bg-panel);
+            display: flex;
+            flex-direction: column;
+        }
+        #hubPane.expanded { width: 58%; }
+        .hub-pane-title {
+            padding: 10px 16px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-soft);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .hub-pane-title button {
+            background: var(--bg-card);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-sm);
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            padding: 3px 10px;
+            cursor: pointer;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .hub-pane-title button:hover { border-color: var(--accent); color: var(--text-default); }
+        #hubCanvas { flex: 1; width: 100%; cursor: grab; }
+        .legend { left: 24px; right: auto; }
+
+        .hv-label { font-size: 11px; fill: var(--text-default); }
+        .hv-on-circle {
+            fill: #fff;
+            font-weight: 700;
+            paint-order: stroke;
+            stroke: rgba(0, 0, 0, 0.65);
+            stroke-width: 2.5px;
+            pointer-events: none;
+            text-anchor: middle;
+        }
+        .hv-title { font-size: 12px; font-weight: 600; fill: var(--text-default); }
+        .hv-score { font-size: 10px; fill: var(--text-muted); }
+        .hv-spoke { stroke: var(--border-strong); stroke-width: 1.5; }
+        .hv-spoke.chosen { stroke: var(--accent); stroke-width: 3; }
+        .hv-spoke.visited-spoke { stroke-opacity: 0.3; }
+        .hv-bar { fill: var(--accent-soft); }
+        .hv-bar-bg { fill: var(--bg-card-2); }
+
+        .tooltip-activation { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
+        .tooltip-activation span { font-weight: 600; color: var(--accent); }
+        .tooltip-connection-item {
+            display: inline-block;
+            padding: 2px 6px;
+            background: var(--border-mid);
+            border-radius: 3px;
+            margin: 2px;
+            font-size: 0.75rem;
+            color: var(--text-default);
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div style="display: flex; gap: 16px; margin-bottom: 4px;">
+        <a href="/" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">&larr; Home</a>
+        <a href="/pathfind_pe.html" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">Pathfinding + PE</a>
+    </div>
+    <h2>ART Pathfinding</h2>
+    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+        Recall-based planning, ESCF-style: an ART layer learns hubs from noisy
+        state vectors (vigilance controls merging), hubs link to successor hubs,
+        and planning is best-first recursive search &mdash; score each remembered
+        successor by cosine similarity to the goal, descend, backtrack on dead
+        ends. Node color = hub membership.
+    </p>
+
+    <div class="panel-section">
+        <h4>World &amp; Training</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>States</label>
+                <input type="number" id="numStates" value="16" min="4" max="60">
+            </div>
+            <div class="param-group">
+                <label>Feature Dim (d)</label>
+                <input type="number" id="dim" value="4" min="2" max="12">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Neighbors (k)</label>
+                <input type="number" id="k" value="3" min="1" max="8">
+            </div>
+            <div class="param-group">
+                <label>Seed</label>
+                <input type="number" id="seed" value="42" min="0">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Vigilance</label>
+                <input type="number" id="vigilance" value="0.95" step="any" data-arrow-step="0.05" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Learning Rate</label>
+                <input type="number" id="lr" value="0.3" step="any" data-arrow-step="0.05" min="0.01" max="1">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Sample Noise</label>
+                <input type="number" id="noise" value="0.03" step="any" data-arrow-step="0.01" min="0" max="0.3">
+            </div>
+            <div class="param-group">
+                <label>Samples/State</label>
+                <input type="number" id="samples" value="5" min="1" max="20">
+            </div>
+        </div>
+        <button id="genBtn" onclick="generateNetwork(true)">Generate World + Train ART</button>
+    </div>
+
+    <div class="panel-section">
+        <h4>Search</h4>
+        <div class="param-group">
+            <label>Max Depth</label>
+            <input type="number" id="maxDepth" value="20" min="1" max="60">
+        </div>
+    </div>
+
+    <button id="runBtn" onclick="runSearch()">RUN SEARCH</button>
+    <button id="shareBtn" onclick="shareLink()">Copy Share Link</button>
+
+    <div class="panel-section">
+        <h4>Start &rarr; Goal</h4>
+        <div id="clampedList" style="font-size: 0.82rem; color: var(--text-muted);">Click two states on the graph</div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Search Log</h4>
+        <div id="searchLog">Run a search to see the trace.</div>
+    </div>
+
+    <div id="status" class="status">Loading network...</div>
+
+    <div class="scrubber-section">
+        <label>
+            <span>Search Event</span>
+            <span id="stepLabel">0 / 0</span>
+        </label>
+        <input type="range" id="scrubber" min="0" max="0" value="0" oninput="updateStep(parseInt(this.value))">
+        <div class="playback-controls">
+            <button onclick="playbackStep(-10)">-10</button>
+            <button onclick="playbackStep(-1)">-1</button>
+            <button onclick="togglePlay()" id="playBtn">Play</button>
+            <button onclick="playbackStep(1)">+1</button>
+            <button onclick="playbackStep(10)">+10</button>
+        </div>
+    </div>
+</div>
+
+<div id="viz-container">
+  <div id="netPane">
+    <svg id="canvas"></svg>
+    <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+    <div id="tooltip" class="tooltip">
+        <div class="tooltip-header" id="tooltip-name"></div>
+        <div class="tooltip-activation">Hub: <span id="tooltip-hub"></span></div>
+        <div class="tooltip-activation">Position: <span id="tooltip-position"></span></div>
+        <div style="font-size: 0.8rem; color: var(--text-muted);">
+            <div style="margin-bottom: 4px;">Transitions:</div>
+            <div id="tooltip-connections-list"></div>
+        </div>
+    </div>
+    <div class="legend">
+        <h4>Search State</h4>
+        <div class="legend-shapes">
+            <span>Fill hue = hub membership (same color = merged into one hub)</span>
+        </div>
+        <div class="legend-shapes">
+            <span style="color: var(--accent-soft);">orange ring = visited</span>
+            <span style="color: #fff;">white ring = current</span>
+        </div>
+        <div class="legend-shapes">
+            <span style="color: var(--danger);">red ring = backtracked</span>
+            <span style="color: var(--warning);">yellow = final path</span>
+        </div>
+    </div>
+  </div>
+  <div id="hubPane">
+    <div class="hub-pane-title">
+        <span>ART Hub &amp; Spoke — current search step</span>
+        <button onclick="toggleHubExpand()" id="hubExpandBtn">⤢ Expand</button>
+    </div>
+    <svg id="hubCanvas"></svg>
+  </div>
+</div>
+
+<script>
+    // State
+    let networkData = null;
+    let searchData = null;     // last search result (trace, hub_path, found)
+    let clamped = [];          // [start, goal] state names
+    let currentStep = 0;
+    let isPlaying = false;
+    let playInterval = null;
+    let nodePositions = {};    // state -> {x, y}
+    let adjacency = {};        // state -> [neighbor states]
+    let sx = null, sy = null;
+    let scoreLayer = null;     // network overlay for neighbor scores
+
+    const svg = d3.select("#canvas");
+    let g;
+    let zoomBehavior;
+    let hubG = null;           // zoom/pan group inside the hub pane
+
+    const hubColor = h => d3.schemeTableau10[h % 10];
+
+    const PARAM_IDS = ['numStates', 'dim', 'k', 'seed', 'vigilance', 'lr',
+        'noise', 'samples', 'maxDepth'];
+
+    function applyParamsFromURL() {
+        const q = new URLSearchParams(location.search);
+        PARAM_IDS.forEach(id => {
+            if (q.has(id)) document.getElementById(id).value = q.get(id);
+        });
+        const clamp = q.get('clamp');
+        if (clamp) clamped = clamp.split(',').filter(Boolean).slice(0, 2);
+    }
+
+    function syncURL() {
+        const q = new URLSearchParams();
+        PARAM_IDS.forEach(id => q.set(id, document.getElementById(id).value));
+        if (clamped.length) q.set('clamp', clamped.join(','));
+        history.replaceState(null, '', `${location.pathname}?${q}`);
+    }
+
+    async function shareLink() {
+        syncURL();
+        try {
+            await navigator.clipboard.writeText(location.href);
+            updateStatus('ready', 'Share link copied to clipboard');
+        } catch (e) {
+            prompt('Copy this link:', location.href);
+        }
+    }
+
+    function getParams() {
+        return {
+            numStates: parseInt(document.getElementById('numStates').value),
+            dim: parseInt(document.getElementById('dim').value),
+            k: parseInt(document.getElementById('k').value),
+            seed: parseInt(document.getElementById('seed').value),
+            vigilance: parseFloat(document.getElementById('vigilance').value),
+            lr: parseFloat(document.getElementById('lr').value),
+            noise: parseFloat(document.getElementById('noise').value),
+            samples: parseInt(document.getElementById('samples').value),
+            maxDepth: parseInt(document.getElementById('maxDepth').value)
+        };
+    }
+
+    async function generateNetwork(clearSelection) {
+        updateStatus('running', 'Generating world + training ART...');
+        try {
+            const res = await fetch('/pathfind-art-network', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ params: getParams() })
+            });
+            networkData = await res.json();
+            if (networkData.error) throw new Error(networkData.error);
+
+            adjacency = {};
+            networkData.states.forEach(n => adjacency[n] = []);
+            networkData.edges.forEach(([a, b]) => {
+                adjacency[a].push(b);
+                adjacency[b].push(a);
+            });
+
+            if (clearSelection) clamped = [];
+            clamped = clamped.filter(n => networkData.states.includes(n));
+            searchData = null;
+            currentStep = 0;
+            document.getElementById('scrubber').max = 0;
+            document.getElementById('stepLabel').textContent = '0 / 0';
+            document.getElementById('searchLog').textContent = 'Run a search to see the trace.';
+
+            renderNetwork();
+            updateClampedList();
+            drawHubView(-1);
+            syncURL();
+            updateStatus('ready', `${networkData.states.length} states → ${networkData.num_hubs} hubs, ${networkData.edges.length} transitions`);
+        } catch (e) {
+            console.error(e);
+            updateStatus('error', 'Failed to generate — is the server running?');
+        }
+    }
+
+    function setupZoom() {
+        zoomBehavior = d3.zoom()
+            .scaleExtent([0.3, 3])
+            .on("zoom", (event) => g.attr("transform", event.transform));
+        svg.call(zoomBehavior);
+        g = svg.append("g");
+    }
+
+    function resetView() {
+        svg.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    function setupHubZoom() {
+        const canvas = d3.select('#hubCanvas');
+        const hubZoom = d3.zoom()
+            .scaleExtent([0.4, 5])
+            .on('zoom', (e) => hubG.attr('transform', e.transform));
+        canvas.call(hubZoom);
+        hubG = canvas.append('g');
+    }
+
+    function toggleHubExpand() {
+        const pane = document.getElementById('hubPane');
+        pane.classList.toggle('expanded');
+        document.getElementById('hubExpandBtn').textContent =
+            pane.classList.contains('expanded') ? '⤡ Collapse' : '⤢ Expand';
+        renderNetwork();
+        if (searchData) updateStep(currentStep);
+        else drawHubView(-1);
+    }
+
+    // A hub is named by its member states, not an H-number.
+    function hubName(h) {
+        return ((networkData && networkData.hub_members[h]) || []).join(',');
+    }
+
+    // States drawn at their literal feature positions (dims 0,1).
+    function renderNetwork() {
+        if (!networkData) return;
+
+        const container = document.getElementById('netPane');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        svg.attr("width", width).attr("height", height);
+        g.selectAll("*").remove();
+
+        const margin = 70;
+        sx = d3.scaleLinear().domain([0, 1]).range([margin, width - margin]);
+        sy = d3.scaleLinear().domain([0, 1]).range([margin, height - margin]);
+
+        nodePositions = {};
+        networkData.states.forEach(name => {
+            const p = networkData.positions[name];
+            nodePositions[name] = { x: sx(p[0]), y: sy(p[1]) };
+        });
+
+        const connectionGroup = g.append("g");
+        networkData.edges.forEach(([a, b]) => {
+            const s = nodePositions[a], t = nodePositions[b];
+            connectionGroup.append("line")
+                .attr("class", "connection")
+                .attr("x1", s.x).attr("y1", s.y)
+                .attr("x2", t.x).attr("y2", t.y)
+                .attr("stroke-width", 1.5)
+                .attr("data-source", a)
+                .attr("data-target", b);
+        });
+
+        const nodeGroup = g.append("g");
+        networkData.states.forEach(name => {
+            const pos = nodePositions[name];
+            const hub = networkData.assign[name];
+            const gEl = nodeGroup.append("g")
+                .attr("transform", `translate(${pos.x},${pos.y})`);
+            gEl.append("circle")
+                .attr("r", 15)
+                .attr("class", "node-shape")
+                .attr("id", `node-${name}`)
+                .attr("fill", hubColor(hub))
+                .on("click", (event) => { event.stopPropagation(); toggleClamp(name); })
+                .on("mouseenter", (event) => handleHover(event, name, true))
+                .on("mouseleave", (event) => handleHover(event, name, false));
+            gEl.append("text")
+                .attr("class", "node-label")
+                .attr("y", 30)
+                .text(name);
+        });
+
+        scoreLayer = g.append("g");
+        refreshClampClasses();
+    }
+
+    function toggleClamp(name) {
+        const idx = clamped.indexOf(name);
+        if (idx !== -1) {
+            clamped.splice(idx, 1);
+        } else if (clamped.length < 2) {
+            clamped.push(name);
+        } else {
+            updateStatus('error', 'Start and goal already set — deselect one first');
+            return;
+        }
+        refreshClampClasses();
+        updateClampedList();
+    }
+
+    function refreshClampClasses() {
+        d3.selectAll('.node-shape').classed('clamped-source', false).classed('clamped-target', false);
+        if (clamped[0]) d3.select(`#node-${clamped[0]}`).classed('clamped-source', true);
+        if (clamped[1]) d3.select(`#node-${clamped[1]}`).classed('clamped-target', true);
+    }
+
+    function updateClampedList() {
+        const el = document.getElementById('clampedList');
+        if (clamped.length === 0) {
+            el.innerHTML = 'Click two states on the graph';
+        } else {
+            el.innerHTML =
+                (clamped[0] ? `<span class="endpoint-tag source">${clamped[0]}</span>` : '') +
+                (clamped[1] ? ` &rarr; <span class="endpoint-tag target">${clamped[1]}</span>` : ' <span style="color: var(--text-dim);">+ pick the goal</span>');
+        }
+    }
+
+    function handleHover(event, name, entering) {
+        const tooltip = document.getElementById('tooltip');
+        if (entering) {
+            const hub = networkData.assign[name];
+            document.getElementById('tooltip-name').textContent = name;
+            document.getElementById('tooltip-hub').textContent =
+                networkData.hub_members[hub].join(', ');
+            document.getElementById('tooltip-position').textContent =
+                '[' + networkData.positions[name].map(v => v.toFixed(2)).join(', ') + ']';
+            document.getElementById('tooltip-connections-list').innerHTML =
+                (adjacency[name] || []).map(n => `<span class="tooltip-connection-item">${n}</span>`).join('') ||
+                '<span style="color: #64748b;">None</span>';
+
+            const rect = event.target.getBoundingClientRect();
+            const container = document.getElementById('netPane').getBoundingClientRect();
+            tooltip.style.left = (rect.right - container.left + 10) + 'px';
+            tooltip.style.top = (rect.top - container.top) + 'px';
+            tooltip.classList.add('visible');
+
+            d3.selectAll('.connection').classed('dimmed', true);
+            d3.selectAll('.node-shape').classed('dimmed', true);
+            d3.select(`#node-${name}`).classed('dimmed', false);
+            (adjacency[name] || []).forEach(n => d3.select(`#node-${n}`).classed('dimmed', false));
+            d3.selectAll('.connection').each(function () {
+                const el = d3.select(this);
+                if (el.attr('data-source') === name || el.attr('data-target') === name) {
+                    el.classed('dimmed', false).classed('highlighted', true);
+                }
+            });
+        } else {
+            tooltip.classList.remove('visible');
+            d3.selectAll('.connection').classed('dimmed', false).classed('highlighted', false);
+            d3.selectAll('.node-shape').classed('dimmed', false);
+        }
+    }
+
+    async function runSearch() {
+        if (clamped.length !== 2) {
+            updateStatus('error', 'Pick a start and a goal state first');
+            return;
+        }
+        const btn = document.getElementById('runBtn');
+        btn.disabled = true;
+        btn.textContent = 'SEARCHING...';
+        updateStatus('running', 'Training + searching (Python backend)...');
+
+        try {
+            const res = await fetch('/pathfind-art-search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ params: getParams(), endpoints: clamped })
+            });
+            searchData = await res.json();
+            if (searchData.error) throw new Error(searchData.error);
+
+            buildLog();
+            const scrubber = document.getElementById('scrubber');
+            scrubber.max = searchData.trace.length - 1;
+            updateStep(searchData.trace.length - 1);
+            syncURL();
+            updateStatus(searchData.found ? 'ready' : 'error',
+                searchData.found
+                    ? `Goal found — path: ${searchData.hub_path.map(h => hubName(h)).join(' → ')}`
+                    : 'Search exhausted — goal unreachable from start');
+        } catch (e) {
+            console.error(e);
+            searchData = null;
+            updateStatus('error', 'Search failed — is the server running?');
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'RUN SEARCH';
+    }
+
+    function hubLabel(h) {
+        return hubName(h);
+    }
+
+    function eventText(e) {
+        switch (e.type) {
+            case 'visit': return `visit ${hubLabel(e.hub)} (depth ${e.depth})`;
+            case 'expand':
+                return e.scores.length
+                    ? `  score: ${e.scores.map(([h, s]) => `${hubLabel(h)} ${s.toFixed(3)}`).join('  ')}`
+                    : '  no unvisited successors';
+            case 'move': return `  → descend to ${hubLabel(e.to)} (cos ${e.score.toFixed(3)})`;
+            case 'backtrack': return `dead end at ${hubLabel(e.hub)} — backtrack`;
+            case 'depth_limit': return `depth limit at ${hubLabel(e.hub)}`;
+            case 'goal': return `GOAL: ${hubLabel(e.hub)} resonates with the goal state`;
+        }
+        return JSON.stringify(e);
+    }
+
+    function buildLog() {
+        const el = document.getElementById('searchLog');
+        el.innerHTML = '';
+        searchData.trace.forEach((e, i) => {
+            const line = document.createElement('div');
+            line.className = 'log-line' +
+                (e.type === 'goal' ? ' goal' : '') +
+                (e.type === 'backtrack' || e.type === 'depth_limit' ? ' backtrack' : '');
+            line.textContent = eventText(e);
+            line.onclick = () => updateStep(i);
+            el.appendChild(line);
+        });
+    }
+
+    // Replay trace events 0..step and paint node/edge classes accordingly.
+    function updateStep(step) {
+        if (!searchData) return;
+        step = Math.max(0, Math.min(step, searchData.trace.length - 1));
+        currentStep = step;
+
+        document.getElementById('scrubber').value = step;
+        document.getElementById('stepLabel').textContent = `${step} / ${searchData.trace.length - 1}`;
+
+        const visited = new Set();
+        const dead = new Set();
+        let current = null;
+        let goalReached = false;
+        for (let i = 0; i <= step; i++) {
+            const e = searchData.trace[i];
+            if (e.type === 'visit') { visited.add(e.hub); current = e.hub; }
+            if (e.type === 'backtrack' || e.type === 'depth_limit') { dead.add(e.hub); current = e.hub; }
+            if (e.type === 'move') current = e.to;
+            if (e.type === 'goal') { goalReached = true; current = e.hub; }
+        }
+
+        d3.selectAll('.node-shape')
+            .classed('visited', false).classed('current-hub', false)
+            .classed('dead', false).classed('on-path', false);
+        d3.selectAll('.connection').classed('on-path', false);
+
+        networkData.states.forEach(name => {
+            const h = networkData.assign[name];
+            const sel = d3.select(`#node-${name}`);
+            if (visited.has(h)) sel.classed('visited', true);
+            if (dead.has(h)) sel.classed('dead', true);
+            if (h === current) sel.classed('current-hub', true);
+        });
+
+        if (goalReached && searchData.found) {
+            const hp = searchData.hub_path;
+            const onPathStates = new Set();
+            hp.forEach(h => (networkData.hub_members[h] || []).forEach(s => onPathStates.add(s)));
+            onPathStates.forEach(s => d3.select(`#node-${s}`).classed('on-path', true));
+            for (let i = 0; i < hp.length - 1; i++) {
+                const A = new Set(networkData.hub_members[hp[i]]);
+                const B = new Set(networkData.hub_members[hp[i + 1]]);
+                d3.selectAll('.connection').each(function () {
+                    const el = d3.select(this);
+                    const s = el.attr('data-source'), t = el.attr('data-target');
+                    if ((A.has(s) && B.has(t)) || (A.has(t) && B.has(s))) el.classed('on-path', true);
+                });
+            }
+        }
+        refreshClampClasses();
+
+        // Overlay the current hub's neighbor scores directly on the network.
+        if (scoreLayer) {
+            scoreLayer.selectAll('*').remove();
+            let expandEvent = null;
+            for (let i = step; i >= 0; i--) {
+                const e = searchData.trace[i];
+                if (e.type === 'expand' && e.hub === current) { expandEvent = e; break; }
+                if (e.type === 'visit' && e.hub !== current) break;
+            }
+            if (expandEvent) {
+                expandEvent.scores.forEach(([h, sc]) => {
+                    const members = networkData.hub_members[h] || [];
+                    if (!members.length) return;
+                    let mx = 0, my = 0;
+                    members.forEach(s => { mx += nodePositions[s].x; my += nodePositions[s].y; });
+                    scoreLayer.append("text")
+                        .attr("class", "score-badge")
+                        .attr("x", mx / members.length)
+                        .attr("y", my / members.length - 24)
+                        .text(sc.toFixed(3));
+                });
+            }
+        }
+
+        const lines = document.querySelectorAll('#searchLog .log-line');
+        lines.forEach((l, i) => l.classList.toggle('current', i === step));
+        if (lines[step]) lines[step].scrollIntoView({ block: 'nearest' });
+
+        drawHubView(step);
+    }
+
+    // ---- Right pane: live ART hub-and-spoke for the current search event ----
+    function centeredCos(a, b) {
+        let dot = 0, na = 0, nb = 0;
+        for (let i = 0; i < a.length; i++) {
+            const x = a[i] - 0.5, y = b[i] - 0.5;
+            dot += x * y; na += x * x; nb += y * y;
+        }
+        if (na < 1e-12 || nb < 1e-12) return 0;
+        return dot / Math.sqrt(na * nb);
+    }
+
+    function drawBars(parent, vec, x, y, width, height) {
+        const bw = width / vec.length;
+        vec.forEach((v, i) => {
+            parent.append("rect").attr("class", "hv-bar-bg")
+                .attr("x", x + i * bw).attr("y", y)
+                .attr("width", bw - 2).attr("height", height);
+            parent.append("rect").attr("class", "hv-bar")
+                .attr("x", x + i * bw).attr("y", y + height * (1 - v))
+                .attr("width", bw - 2).attr("height", height * v);
+        });
+    }
+
+    function drawHubView(step) {
+        const canvas = d3.select('#hubCanvas');
+        const pane = document.getElementById('hubPane');
+        const W = pane.clientWidth;
+        const H = Math.max(pane.clientHeight - 44, 200);
+        canvas.attr('width', W).attr('height', H);
+        hubG.selectAll('*').remove();
+        const svgH = hubG;
+
+        if (!networkData || !searchData || step < 0) {
+            svgH.append("text").attr("class", "hv-label")
+                .attr("x", W / 2).attr("y", H / 2).attr("text-anchor", "middle")
+                .text(searchData ? 'Scrub the search timeline' : 'Run a search to see recall');
+            return;
+        }
+
+        // Replay to find the current hub, visited set, and the chosen spoke.
+        let current = searchData.start_hub;
+        let anyMove = false;
+        const visited = new Set();
+        let chosen = null;
+        for (let i = 0; i <= step; i++) {
+            const e = searchData.trace[i];
+            if (e.type === 'visit') { current = e.hub; visited.add(e.hub); chosen = null; }
+            if (e.type === 'move') { chosen = e.to; anyMove = true; }
+            if (e.type === 'backtrack' || e.type === 'depth_limit') { current = e.hub; chosen = null; }
+            if (e.type === 'goal') current = e.hub;
+        }
+
+        const template = networkData.hub_templates[current];
+        const atStart = current === searchData.start_hub && !anyMove;
+        const inputVec = atStart ? networkData.positions[clamped[0]] : template;
+        const inputName = atStart ? clamped[0] : hubName(current);
+        const inputHubColor = atStart ? hubColor(networkData.assign[clamped[0]]) : hubColor(current);
+        const goalVec = networkData.positions[clamped[1]];
+
+        const numHubs = networkData.num_hubs;
+        const inputY = 54, hubY = H * 0.42, predY = H * 0.78;
+        const cx = W / 2;
+
+        // --- Top layer: the input as a colored state circle + its feature distribution ---
+        svgH.append("text").attr("class", "hv-title")
+            .attr("x", cx).attr("y", 16).attr("text-anchor", "middle")
+            .text(atStart ? 'input' : 'input (recalled)');
+        const barsW = Math.min(110, inputVec.length * 14);
+        const inCx = cx - barsW / 2 - 34;
+        svgH.append("circle")
+            .attr("cx", inCx).attr("cy", inputY - 8).attr("r", 18)
+            .attr("fill", inputHubColor)
+            .attr("stroke", "#fff").attr("stroke-width", 2);
+        svgH.append("text").attr("class", "hv-on-circle")
+            .attr("x", inCx).attr("y", inputY - 4).attr("font-size", "10px")
+            .text(inputName.length > 7 ? inputName.split(',')[0] + '+' : inputName);
+        drawBars(svgH, inputVec, cx - barsW / 2 + 4, inputY - 25, barsW, 34);
+
+        // --- Middle layer: ALL hubs with their activation to the input ---
+        const acts = {};
+        for (let h = 0; h < numHubs; h++) {
+            acts[h] = centeredCos(inputVec, networkData.hub_templates[h]);
+        }
+        const margin = 26;
+        const spacing = (W - 2 * margin) / Math.max(numHubs - 1, 1);
+        const r = Math.max(7, Math.min(15, spacing / 2 - 3));
+        const hubXs = {};
+        for (let h = 0; h < numHubs; h++) {
+            hubXs[h] = numHubs === 1 ? cx : margin + h * spacing;
+        }
+
+        for (let h = 0; h < numHubs; h++) {
+            const a = Math.max(0, acts[h]);
+            svgH.append("line")
+                .attr("x1", cx).attr("y1", inputY + 12)
+                .attr("x2", hubXs[h]).attr("y2", hubY - r - 2)
+                .attr("stroke", h === current ? 'var(--accent)' : 'var(--border-strong)')
+                .attr("stroke-width", h === current ? 2.5 : 1)
+                .attr("stroke-opacity", 0.15 + 0.85 * a * a);
+            svgH.append("circle")
+                .attr("cx", hubXs[h]).attr("cy", hubY).attr("r", r)
+                .attr("fill", hubColor(h))
+                .attr("fill-opacity", 0.25 + 0.75 * a * a)
+                .attr("stroke", h === current ? '#fff' : 'var(--border-strong)')
+                .attr("stroke-width", h === current ? 3 : 1);
+            if (numHubs <= 24) {
+                svgH.append("text").attr("class", "hv-label")
+                    .attr("x", hubXs[h] + 3).attr("y", hubY - r - 6)
+                    .attr("font-size", "9px")
+                    .attr("transform", `rotate(-45 ${hubXs[h] + 3} ${hubY - r - 6})`)
+                    .text(hubName(h));
+                svgH.append("text").attr("class", "hv-score")
+                    .attr("x", hubXs[h]).attr("y", hubY + r + 12).attr("text-anchor", "middle")
+                    .attr("font-size", "8.5px").text(acts[h].toFixed(2));
+            }
+        }
+        svgH.append("text").attr("class", "hv-label")
+            .attr("x", cx).attr("y", hubY + r + 28).attr("text-anchor", "middle")
+            .text(`hub layer — winner: ${hubName(current)}`);
+
+        // --- Bottom layer: winner's predictions (the scenes it points to) ---
+        const preds = (networkData.hub_adj[current] || [])
+            .map(h => ({ h, score: centeredCos(networkData.hub_templates[h], goalVec) }))
+            .sort((a, b) => b.score - a.score);
+
+        svgH.append("text").attr("class", "hv-title")
+            .attr("x", cx).attr("y", predY - 34).attr("text-anchor", "middle")
+            .text('predictions (cos to goal)');
+
+        const pSpacing = Math.min(86, (W - 2 * margin) / Math.max(preds.length, 1));
+        preds.forEach((p, i) => {
+            const x = cx + (i - (preds.length - 1) / 2) * pSpacing;
+            const isChosen = p.h === chosen;
+            const isGoal = p.h === searchData.goal_hub;
+            svgH.append("line")
+                .attr("class", `hv-spoke${isChosen ? ' chosen' : ''}${visited.has(p.h) && !isChosen ? ' visited-spoke' : ''}`)
+                .attr("x1", hubXs[current]).attr("y1", hubY + r)
+                .attr("x2", x).attr("y2", predY - 18);
+            svgH.append("circle")
+                .attr("cx", x).attr("cy", predY).attr("r", 16)
+                .attr("fill", hubColor(p.h))
+                .attr("stroke", isGoal ? 'var(--warning)' : (isChosen ? 'var(--accent)' : 'var(--border-strong)'))
+                .attr("stroke-width", isGoal || isChosen ? 3.5 : 1.5)
+                .attr("opacity", visited.has(p.h) && !isChosen ? 0.45 : 1);
+            const nm = hubName(p.h);
+            svgH.append("text").attr("class", "hv-on-circle")
+                .attr("x", x).attr("y", predY + 3).attr("font-size", "9px")
+                .text(nm.length > 6 ? nm.split(',')[0] + '+' : nm);
+            svgH.append("text").attr("class", "hv-score")
+                .attr("x", x).attr("y", predY + 30).attr("text-anchor", "middle")
+                .text(p.score.toFixed(3));
+            if (nm.length > 6 || visited.has(p.h)) {
+                svgH.append("text").attr("class", "hv-score")
+                    .attr("x", x).attr("y", predY + 42).attr("text-anchor", "middle")
+                    .attr("font-size", "8.5px")
+                    .text(`${nm}${visited.has(p.h) && !isChosen ? ' ✕' : ''}`);
+            }
+        });
+        if (!preds.length) {
+            svgH.append("text").attr("class", "hv-label")
+                .attr("x", cx).attr("y", predY).attr("text-anchor", "middle")
+                .text('no transitions from this hub');
+        }
+    }
+
+    function playbackStep(delta) { updateStep(currentStep + delta); }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+        if (isPlaying) {
+            btn.textContent = 'Pause';
+            playInterval = setInterval(() => {
+                if (!searchData) return;
+                if (currentStep >= searchData.trace.length - 1) currentStep = -1;
+                updateStep(currentStep + 1);
+            }, 450);
+        } else {
+            btn.textContent = 'Play';
+            clearInterval(playInterval);
+        }
+    }
+
+    function updateStatus(type, message) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = message;
+    }
+
+    window.addEventListener('resize', () => {
+        if (networkData) {
+            renderNetwork();
+            if (searchData) updateStep(currentStep);
+            else drawHubView(-1);
+        }
+    });
+
+    setupZoom();
+    setupHubZoom();
+    applyParamsFromURL();
+    generateNetwork(false);
+</script>
+
+<script src="/nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IAC Pathfinding — Positional Encoding</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        /* PE pathfinding page uses rose accent */
+        :root {
+            --accent: #ec4899;
+            --accent-dark: #db2777;
+            --accent-glow: rgba(236, 72, 153, 0.2);
+            --accent-soft: #f472b6;
+            --sidebar-width: 336px;
+        }
+
+        #sidebar { gap: 14px; }
+        #sidebar h2 { margin: 0 0 4px 0; font-size: 1.4rem; }
+
+        .panel-section {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+        }
+        .panel-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .param-row { display: flex; gap: 8px; }
+        .param-row .param-group { flex: 1; }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-card-2);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-md);
+            color: var(--text-default);
+            font-size: 0.85rem;
+        }
+        select:focus { outline: none; border-color: var(--accent); }
+        .param-group input:disabled { opacity: 0.35; cursor: not-allowed; }
+        .param-group.disabled label { opacity: 0.35; }
+
+        .help-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--accent-soft);
+            font-size: 0.7rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-left: 6px;
+            vertical-align: -2px;
+            padding: 0;
+        }
+        .help-btn:hover { background: var(--accent-glow); }
+
+        .help-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            z-index: 10001;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .help-overlay.open { display: flex; }
+        .help-modal {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-xl);
+            max-width: 620px;
+            max-height: 82vh;
+            overflow-y: auto;
+            padding: 26px 30px;
+            margin: 20px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+        }
+        .help-modal h3 { margin: 0 0 4px 0; color: var(--text-strong); font-size: 1.15rem; }
+        .help-modal h4 { margin: 18px 0 6px 0; color: var(--accent-soft); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
+        .help-modal p, .help-modal li { font-size: 0.85rem; line-height: 1.6; color: var(--text-muted); }
+        .help-modal ol { padding-left: 20px; margin: 6px 0; }
+        .help-modal code {
+            background: var(--bg-card);
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: var(--accent-soft);
+        }
+        .help-modal table { border-collapse: collapse; margin: 8px 0; font-size: 0.82rem; }
+        .help-modal th, .help-modal td { padding: 4px 12px; text-align: left; color: var(--text-muted); border-bottom: 1px solid var(--border-soft); }
+        .help-modal th { color: var(--text-dim); font-weight: 600; }
+        .help-close {
+            float: right;
+            background: var(--bg-card);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-md);
+            color: var(--text-muted);
+            padding: 4px 12px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .help-close:hover { border-color: var(--accent); color: var(--text-default); }
+
+        #genBtn {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+        #genBtn:hover { background: var(--accent-dark); }
+
+        #runBtn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            border: none;
+            border-radius: var(--radius-lg);
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #runBtn:hover { background: linear-gradient(135deg, #059669, #047857); }
+        #runBtn:disabled { background: #374151; cursor: not-allowed; }
+
+        #shareBtn {
+            width: 100%;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid var(--accent);
+            border-radius: var(--radius-md);
+            color: var(--accent-soft);
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #shareBtn:hover { background: var(--accent-glow); }
+
+        .endpoint-tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin: 2px;
+        }
+        .endpoint-tag.source { background: var(--success); color: var(--bg-card); }
+        .endpoint-tag.target { background: var(--warning); color: var(--bg-card); }
+
+        #pathResult { font-size: 0.82rem; line-height: 1.55; color: var(--text-muted); }
+        #pathResult .found { color: var(--success); font-weight: 600; }
+        #pathResult .notfound { color: var(--danger); font-weight: 600; }
+        #pathResult .path-chain { color: var(--accent-soft); font-family: monospace; }
+
+        .scrubber-section { margin-top: auto; }
+
+        .field-cell { pointer-events: none; }
+
+        .connection.dimmed { stroke-opacity: 0.08; }
+        .connection.highlighted { stroke-opacity: 1; }
+        .connection.on-path { stroke: var(--warning); stroke-opacity: 1; }
+
+        .node-shape { stroke: var(--border-strong); stroke-width: 2px; cursor: pointer; transition: stroke 0.15s; }
+        .node-shape:hover { stroke: var(--accent-soft); stroke-width: 3px; }
+        .node-shape.clamped-source { stroke: var(--success); stroke-width: 4px; }
+        .node-shape.clamped-target { stroke: var(--warning); stroke-width: 4px; }
+        .node-shape.on-path { stroke: var(--warning); stroke-width: 3.5px; }
+        .node-shape.dimmed { opacity: 0.3; }
+        .node-label { font-size: 11px; text-anchor: middle; pointer-events: none; }
+
+        .legend-shapes { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; display: flex; gap: 14px; }
+        .legend-shapes .swatch { display: inline-block; width: 11px; height: 11px; background: var(--border-strong); vertical-align: -1px; margin-right: 4px; }
+        .legend-shapes .swatch.circle { border-radius: 50%; }
+        .legend-shapes .swatch.square { border-radius: 2px; }
+
+        .tooltip-activation { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
+        .tooltip-activation span { font-weight: 600; color: var(--accent); }
+        .tooltip-connection-item {
+            display: inline-block;
+            padding: 2px 6px;
+            background: var(--border-mid);
+            border-radius: 3px;
+            margin: 2px;
+            font-size: 0.75rem;
+            color: var(--text-default);
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div style="display: flex; gap: 16px; margin-bottom: 4px;">
+        <a href="/" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">&larr; Home</a>
+        <a href="/pathfind.html" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">Pathfinding (Random)</a>
+    </div>
+    <h2>Pathfinding + PE</h2>
+    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+        Geometry-first variant: every node has a position vector and connections
+        go to nearest neighbors. Goal-directed inhibition spares the siblings
+        closest to the clamped endpoints, so competition itself routes the plan
+        from scenario to scenario. The layout <em>is</em> the encoding.
+    </p>
+
+    <div class="panel-section">
+        <h4>Network</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Scenarios (X)</label>
+                <input type="number" id="numScenarios" value="12" min="2" max="40">
+            </div>
+            <div class="param-group">
+                <label>Actions (Y)</label>
+                <input type="number" id="numActions" value="14" min="2" max="40">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Encoding Dim (d)</label>
+                <input type="number" id="dim" value="2" min="2" max="8">
+            </div>
+            <div class="param-group">
+                <label>Nearest Actions (k)</label>
+                <input type="number" id="k" value="2" min="1" max="10">
+            </div>
+        </div>
+        <div class="param-group">
+            <label>Seed</label>
+            <input type="number" id="seed" value="42" min="0">
+        </div>
+        <div class="param-group">
+            <label>Hub Weights</label>
+            <select id="weightMode">
+                <option value="uniform">Uniform (all equal)</option>
+                <option value="random">Random per connection</option>
+                <option value="geometric">Geometric (closer = stronger)</option>
+            </select>
+        </div>
+        <button id="genBtn" onclick="generateNetwork(true)">Generate Network</button>
+    </div>
+
+    <div class="panel-section">
+        <h4>Dynamics</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Excitatory</label>
+                <input type="number" id="exc" value="0.1" step="any" data-arrow-step="0.01" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Inhibitory</label>
+                <input type="number" id="inh" value="-0.05" step="any" data-arrow-step="0.01" min="-1" max="0">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Decay</label>
+                <input type="number" id="dec" value="0.05" step="any" data-arrow-step="0.01" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Steps</label>
+                <input type="number" id="steps" value="200" min="1" max="1000">
+            </div>
+        </div>
+        <div class="param-group">
+            <label>Inhibition Mode</label>
+            <select id="inhibitionMode">
+                <option value="directed">Goal-directed: wrong-direction siblings absorb inhibition</option>
+                <option value="sibling">Sibling: only nodes sharing a neighbor compete</option>
+                <option value="global">Global: all same-type nodes compete</option>
+            </select>
+        </div>
+        <div class="param-group" id="sharpnessGroup">
+            <label>Directional Inhibition (higher = path hugs the corridor)
+                <button class="help-btn" onclick="toggleHelp(true)" title="How does this work?">?</button>
+            </label>
+            <input type="number" id="dirInh" value="1" step="any" data-arrow-step="0.5" min="0" max="10">
+        </div>
+        <div class="param-group">
+            <label>Output Rule</label>
+            <select id="rectify">
+                <option value="true">Canonical: only active units transmit ([a]+)</option>
+                <option value="false">Raw: negative activations transmit too</option>
+            </select>
+        </div>
+    </div>
+
+    <button id="runBtn" onclick="runSimulation()">RUN SIMULATION</button>
+    <button id="shareBtn" onclick="shareLink()">Copy Share Link</button>
+
+    <div class="panel-section">
+        <h4>Clamped Endpoints</h4>
+        <div id="clampedList" style="font-size: 0.82rem; color: var(--text-muted);">Click two nodes on the graph</div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Path Analysis</h4>
+        <div class="param-group" style="margin-bottom: 8px;">
+            <label>Activation Threshold</label>
+            <input type="number" id="threshold" value="0.1" step="any" data-arrow-step="0.05" min="-0.2" max="1">
+        </div>
+        <div id="pathResult">Run a simulation to analyze.</div>
+    </div>
+
+    <div id="status" class="status">Loading network...</div>
+
+    <div class="scrubber-section">
+        <label>
+            <span>Time Step</span>
+            <span id="stepLabel">0 / 0</span>
+        </label>
+        <input type="range" id="scrubber" min="0" max="0" value="0" oninput="updateStep(parseInt(this.value))">
+        <div class="playback-controls">
+            <button onclick="playbackStep(-10)">-10</button>
+            <button onclick="playbackStep(-1)">-1</button>
+            <button onclick="togglePlay()" id="playBtn">Play</button>
+            <button onclick="playbackStep(1)">+1</button>
+            <button onclick="playbackStep(10)">+10</button>
+        </div>
+    </div>
+</div>
+
+<div class="help-overlay" id="helpOverlay" onclick="if (event.target === this) toggleHelp(false)">
+    <div class="help-modal">
+        <button class="help-close" onclick="toggleHelp(false)">Close</button>
+        <h3>Directional Inhibition</h3>
+        <p>Goal-directed competition: clamping two endpoints doesn't inject any
+        activation into the network &mdash; it only reshapes <em>who wins the local
+        competitions</em>. Excitation, decay, and external input are bone-stock IAC;
+        the goal information enters purely through the inhibitory weights.</p>
+
+        <h4>The algorithm</h4>
+        <ol>
+            <li><strong>Pools.</strong> Every node's neighbors form a competitive pool:
+            a scenario's actions compete to serve it, and an action's scenarios compete
+            to claim it (siblings = nodes sharing a neighbor).</li>
+            <li><strong>Proximity score.</strong> Each pool member is scored by its mean
+            positional similarity to the <em>two clamped endpoints</em>:
+            <code>score = 1 &minus; ‖p &minus; p_clamp‖ / &radic;d</code>, averaged over both clamps.
+            Averaging makes the score peak <em>between</em> the endpoints &mdash; the corridor
+            a plan must cross &mdash; not just next to one of them.</li>
+            <li><strong>Relative softmax.</strong> Within each pool:
+            <code>&alpha; = softmax(score &times; strength &times; 10)</code>. Because it's a softmax,
+            everything is relative to the pool: the locally best-placed sibling benefits most
+            <em>even if it's globally far from both clamps</em>, and a sibling that's off-target
+            but less off than its rivals is penalized less.</li>
+            <li><strong>Exemption, not reallocation.</strong> Each member's <em>incoming</em>
+            inhibitory weight is scaled by <code>(1 &minus; &alpha;) &times; N/(N&minus;1)</code>.
+            The winner's softmax share is subtracted from its own inhibition; nobody else's
+            inhibition is amplified. The pool's total inhibition budget is identical at every
+            strength &mdash; the dial only re-aims it.</li>
+        </ol>
+
+        <h4>Worked example</h4>
+        <p>A scenario has three actions with corridor-proximity scores 0.65, 0.60, 0.40.
+        At strength 2 (softmax temperature &times;20):</p>
+        <table>
+            <tr><th>Action</th><th>Score</th><th>&alpha; (softmax)</th><th>Inhibition received</th></tr>
+            <tr><td>A (best)</td><td>0.65</td><td>0.70</td><td>0.45&times; baseline</td></tr>
+            <tr><td>B (close 2nd)</td><td>0.60</td><td>0.26</td><td>1.11&times; baseline</td></tr>
+            <tr><td>C (far off)</td><td>0.40</td><td>0.005</td><td>1.49&times; baseline</td></tr>
+        </table>
+        <p>B is off the ideal line but much closer than C, so it keeps a fighting chance;
+        C absorbs the most competition. Raising strength widens these gaps until only the
+        best member of each pool is effectively exempt.</p>
+
+        <h4>The strength dial</h4>
+        <p><strong>0</strong> &mdash; uniform sibling inhibition (direction-blind baseline).
+        <strong>High</strong> &mdash; each pool's best-placed member becomes immune to its
+        rivals while the rest keep &approx;1&times;, so the winning chain of scenario&rarr;action
+        hops survives competition and the activation front follows the corridor between
+        the clamps instead of blooming outward.</p>
+
+        <h4>Why some off-path neighbors still light up</h4>
+        <p>Excitation itself is undirected: an active node excites <em>all</em> its neighbors
+        through its edges (it cannot choose). Nodes adjacent to the clamps or the path
+        therefore receive real activation &mdash; they're the branches the network considered.
+        Directional inhibition decides whose <em>continuation</em> survives, so those
+        considered-but-rejected branches fade rather than propagate. A stronger inhibitory
+        weight prunes them harder.</p>
+    </div>
+</div>
+
+<div id="viz-container">
+    <svg id="canvas"></svg>
+    <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+    <div id="tooltip" class="tooltip">
+        <div class="tooltip-header" id="tooltip-name"></div>
+        <div class="tooltip-activation">Activation: <span id="tooltip-activation">0.000</span></div>
+        <div class="tooltip-activation">Position: <span id="tooltip-position"></span></div>
+        <div class="tooltip-activation" id="tooltip-sim-row" style="display: none;">Goal similarity: <span id="tooltip-sim"></span></div>
+        <div style="font-size: 0.8rem; color: var(--text-muted);">
+            <div style="margin-bottom: 4px;">Connections (weight):</div>
+            <div id="tooltip-connections-list"></div>
+        </div>
+    </div>
+    <div class="legend">
+        <h4>Activation Level</h4>
+        <div class="legend-gradient" id="legendGradient"></div>
+        <div class="legend-labels">
+            <span>-0.2</span>
+            <span>0</span>
+            <span>1.0</span>
+        </div>
+        <div class="legend-shapes">
+            <span><span class="swatch circle"></span>Scenario</span>
+            <span><span class="swatch square"></span>Action</span>
+        </div>
+        <div class="legend-shapes" style="margin-top: 4px;">
+            <span>Edges: <span style="color: #6b7280;">grey</span> = quiet &rarr; <span style="color: var(--success);">green</span> = active</span>
+        </div>
+        <div class="legend-shapes" style="margin-top: 4px;">
+            <span><span style="color: var(--accent-soft);">Rose glow</span> = similarity field (clamp 2 nodes)</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // State
+    let networkData = null;
+    let simData = null;
+    let clamped = [];          // [source, target] node names, in click order
+    let currentStep = 0;
+    let isPlaying = false;
+    let playInterval = null;
+    let nodePositions = {};    // name -> {x, y, type} screen coords
+    let adjacency = {};        // node -> [{target, weight}]
+    let sx = null, sy = null;  // unit-space -> screen scales
+    let fieldGroup = null;
+
+    const svg = d3.select("#canvas");
+    let g;
+    let zoomBehavior;
+
+    const edgeFlowColor = d3.interpolateRgb("#4b5563", "#22c55e");
+
+    const activationColor = d3.scaleSequential()
+        .domain([-0.2, 1.0])
+        .interpolator(t => {
+            if (t < 0.167) {
+                return d3.interpolateRgb("#ef4444", "#4b5563")(t / 0.167);
+            }
+            return d3.interpolateRgb("#4b5563", "#22c55e")((t - 0.167) / 0.833);
+        });
+
+    const PARAM_IDS = ['numScenarios', 'numActions', 'dim', 'k', 'seed', 'weightMode',
+        'exc', 'inh', 'dec', 'steps', 'rectify', 'inhibitionMode', 'dirInh'];
+
+    function applyParamsFromURL() {
+        const q = new URLSearchParams(location.search);
+        PARAM_IDS.forEach(id => {
+            if (q.has(id)) document.getElementById(id).value = q.get(id);
+        });
+        const clamp = q.get('clamp');
+        if (clamp) clamped = clamp.split(',').filter(Boolean).slice(0, 2);
+    }
+
+    function syncURL() {
+        const q = new URLSearchParams();
+        PARAM_IDS.forEach(id => q.set(id, document.getElementById(id).value));
+        if (clamped.length) q.set('clamp', clamped.join(','));
+        history.replaceState(null, '', `${location.pathname}?${q}`);
+    }
+
+    async function shareLink() {
+        syncURL();
+        try {
+            await navigator.clipboard.writeText(location.href);
+            updateStatus('ready', 'Share link copied to clipboard');
+        } catch (e) {
+            prompt('Copy this link:', location.href);
+        }
+    }
+
+    function getNetworkParams() {
+        return {
+            numScenarios: parseInt(document.getElementById('numScenarios').value),
+            numActions: parseInt(document.getElementById('numActions').value),
+            dim: parseInt(document.getElementById('dim').value),
+            k: parseInt(document.getElementById('k').value),
+            seed: parseInt(document.getElementById('seed').value),
+            weightMode: document.getElementById('weightMode').value,
+            rectify: document.getElementById('rectify').value === 'true',
+            inhibitionMode: document.getElementById('inhibitionMode').value,
+            excitatory: parseFloat(document.getElementById('exc').value),
+            inhibitory: parseFloat(document.getElementById('inh').value),
+            decay: parseFloat(document.getElementById('dec').value),
+            dirInh: parseFloat(document.getElementById('dirInh').value) || 0,
+            steps: parseInt(document.getElementById('steps').value)
+        };
+    }
+
+    // Full-dimension similarity of a node to the clamped endpoints (mean, [0,1]).
+    function goalSimilarity(name) {
+        if (!networkData || clamped.length === 0) return null;
+        const p = networkData.positions[name];
+        const maxDist = Math.sqrt(networkData.dim);
+        let total = 0, count = 0;
+        clamped.forEach(c => {
+            const q = networkData.positions[c];
+            if (!q) return;
+            const d = Math.sqrt(p.reduce((acc, v, i) => acc + (v - q[i]) ** 2, 0));
+            total += 1 - d / maxDist;
+            count++;
+        });
+        return count ? total / count : null;
+    }
+
+    async function generateNetwork(clearSelection) {
+        updateStatus('running', 'Generating network...');
+        try {
+            const res = await fetch('/pathfind-pe-network', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ params: getNetworkParams() })
+            });
+            networkData = await res.json();
+            if (networkData.error) throw new Error(networkData.error);
+
+            adjacency = {};
+            networkData.nodes.forEach(n => adjacency[n] = []);
+            networkData.connections.forEach(c => {
+                adjacency[c.source].push({ target: c.target, weight: c.weight });
+                adjacency[c.target].push({ target: c.source, weight: c.weight });
+            });
+
+            if (clearSelection) clamped = [];
+            clamped = clamped.filter(n => networkData.nodes.includes(n));
+            simData = null;
+            currentStep = 0;
+            document.getElementById('scrubber').max = 0;
+            document.getElementById('stepLabel').textContent = '0 / 0';
+            document.getElementById('pathResult').textContent = 'Run a simulation to analyze.';
+
+            renderNetwork();
+            updateClampedList();
+            syncURL();
+            updateStatus('ready', `${networkData.scenarios.length} scenarios, ${networkData.actions.length} actions, ${networkData.connections.length} connections (d=${networkData.dim})`);
+        } catch (e) {
+            console.error(e);
+            updateStatus('error', 'Failed to generate network — is the server running?');
+        }
+    }
+
+    function setupZoom() {
+        zoomBehavior = d3.zoom()
+            .scaleExtent([0.3, 3])
+            .on("zoom", (event) => g.attr("transform", event.transform));
+        svg.call(zoomBehavior);
+        g = svg.append("g");
+    }
+
+    function resetView() {
+        svg.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    function setupLegendGradient() {
+        document.getElementById('legendGradient').style.background =
+            'linear-gradient(to right, #ef4444 0%, #4b5563 17%, #22c55e 100%)';
+    }
+
+    // Nodes are drawn at their literal encoded positions (dims 0,1) — the
+    // layout IS the positional encoding. No force simulation.
+    function renderNetwork() {
+        if (!networkData) return;
+
+        const container = document.getElementById('viz-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        svg.attr("width", width).attr("height", height);
+        g.selectAll("*").remove();
+
+        const margin = 70;
+        sx = d3.scaleLinear().domain([0, 1]).range([margin, width - margin]);
+        sy = d3.scaleLinear().domain([0, 1]).range([margin, height - margin]);
+
+        nodePositions = {};
+        networkData.nodes.forEach(name => {
+            const p = networkData.positions[name];
+            nodePositions[name] = {
+                x: sx(p[0]),
+                y: sy(p[1]),
+                type: networkData.node_types[name]
+            };
+        });
+
+        fieldGroup = g.append("g");   // similarity heatmap layer (under edges)
+
+        const maxW = Math.max(...networkData.connections.map(c => c.weight), 0.001);
+        const connectionGroup = g.append("g");
+        networkData.connections.forEach(conn => {
+            const s = nodePositions[conn.source];
+            const t = nodePositions[conn.target];
+            connectionGroup.append("line")
+                .attr("class", "connection")
+                .attr("x1", s.x).attr("y1", s.y)
+                .attr("x2", t.x).attr("y2", t.y)
+                .attr("stroke", "#4b5563")
+                .attr("stroke-opacity", 0.45)
+                .attr("stroke-width", 0.5 + 2.5 * (conn.weight / maxW))
+                .attr("data-source", conn.source)
+                .attr("data-target", conn.target);
+        });
+
+        const nodeGroup = g.append("g");
+        networkData.nodes.forEach(name => {
+            const pos = nodePositions[name];
+            const gEl = nodeGroup.append("g")
+                .attr("transform", `translate(${pos.x},${pos.y})`);
+            const shape = pos.type === 'scenario'
+                ? gEl.append("circle").attr("r", 15)
+                : gEl.append("rect")
+                    .attr("x", -13).attr("y", -13)
+                    .attr("width", 26).attr("height", 26).attr("rx", 5);
+            shape
+                .attr("class", "node-shape")
+                .attr("id", `node-${name}`)
+                .attr("fill", "#4b5563")
+                .on("click", (event) => { event.stopPropagation(); toggleClamp(name); })
+                .on("mouseenter", (event) => handleHover(event, name, true))
+                .on("mouseleave", (event) => handleHover(event, name, false));
+
+            gEl.append("text")
+                .attr("class", "node-label")
+                .attr("y", 30)
+                .text(name);
+        });
+
+        drawField();
+        refreshClampClasses();
+    }
+
+    // Similarity heatmap over 2D space toward the clamped endpoints.
+    // Exact for d=2; for d>2 it's the projection onto dims 0,1.
+    function drawField() {
+        if (!fieldGroup) return;
+        fieldGroup.selectAll('*').remove();
+        if (!networkData || clamped.length === 0) return;
+
+        const pts = clamped.map(n => networkData.positions[n]).filter(Boolean);
+        if (!pts.length) return;
+
+        const container = document.getElementById('viz-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        const cell = 34;
+        const cells = [];
+        for (let px = 0; px < width; px += cell) {
+            for (let py = 0; py < height; py += cell) {
+                const ux = sx.invert(px + cell / 2);
+                const uy = sy.invert(py + cell / 2);
+                let v = 0;
+                pts.forEach(p => {
+                    const d = Math.sqrt((ux - p[0]) ** 2 + (uy - p[1]) ** 2);
+                    v += 1 - d / Math.SQRT2;
+                });
+                cells.push({ px, py, v: v / pts.length });
+            }
+        }
+        const vmin = Math.min(...cells.map(c => c.v));
+        const vmax = Math.max(...cells.map(c => c.v));
+        cells.forEach(c => {
+            const norm = vmax > vmin ? (c.v - vmin) / (vmax - vmin) : 0;
+            fieldGroup.append("rect")
+                .attr("class", "field-cell")
+                .attr("x", c.px).attr("y", c.py)
+                .attr("width", cell).attr("height", cell)
+                .attr("fill", "#ec4899")
+                .attr("opacity", 0.22 * norm * norm);
+        });
+    }
+
+    function toggleClamp(name) {
+        const idx = clamped.indexOf(name);
+        if (idx !== -1) {
+            clamped.splice(idx, 1);
+        } else if (clamped.length < 2) {
+            clamped.push(name);
+        } else {
+            updateStatus('error', 'Two nodes already clamped — deselect one first');
+            return;
+        }
+        refreshClampClasses();
+        updateClampedList();
+        drawField();
+    }
+
+    function refreshClampClasses() {
+        d3.selectAll('.node-shape').classed('clamped-source', false).classed('clamped-target', false);
+        if (clamped[0]) d3.select(`#node-${clamped[0]}`).classed('clamped-source', true);
+        if (clamped[1]) d3.select(`#node-${clamped[1]}`).classed('clamped-target', true);
+    }
+
+    function updateClampedList() {
+        const el = document.getElementById('clampedList');
+        if (clamped.length === 0) {
+            el.innerHTML = 'Click two nodes on the graph';
+        } else {
+            el.innerHTML =
+                (clamped[0] ? `<span class="endpoint-tag source">${clamped[0]}</span>` : '') +
+                (clamped[1] ? ` &rarr; <span class="endpoint-tag target">${clamped[1]}</span>` : ' <span style="color: var(--text-dim);">+ pick a second node</span>');
+        }
+    }
+
+    function handleHover(event, name, entering) {
+        const tooltip = document.getElementById('tooltip');
+        if (entering) {
+            document.getElementById('tooltip-name').textContent =
+                `${name} (${networkData.node_types[name]})`;
+            let activation = 0;
+            if (simData) {
+                activation = simData.history[currentStep][simData.idx_lookup[name]];
+            }
+            document.getElementById('tooltip-activation').textContent = activation.toFixed(4);
+            document.getElementById('tooltip-position').textContent =
+                '[' + networkData.positions[name].map(v => v.toFixed(2)).join(', ') + ']';
+
+            const sim = goalSimilarity(name);
+            const simRow = document.getElementById('tooltip-sim-row');
+            if (sim !== null) {
+                simRow.style.display = '';
+                document.getElementById('tooltip-sim').textContent = sim.toFixed(3);
+            } else {
+                simRow.style.display = 'none';
+            }
+
+            const conns = adjacency[name] || [];
+            document.getElementById('tooltip-connections-list').innerHTML = conns.length
+                ? conns.map(c => `<span class="tooltip-connection-item">${c.target} (${c.weight.toFixed(3)})</span>`).join('')
+                : '<span style="color: #64748b;">None</span>';
+
+            const rect = event.target.getBoundingClientRect();
+            const container = document.getElementById('viz-container').getBoundingClientRect();
+            tooltip.style.left = (rect.right - container.left + 10) + 'px';
+            tooltip.style.top = (rect.top - container.top) + 'px';
+            tooltip.classList.add('visible');
+
+            d3.selectAll('.connection').classed('dimmed', true);
+            d3.selectAll('.node-shape').classed('dimmed', true);
+            d3.select(`#node-${name}`).classed('dimmed', false);
+            conns.forEach(c => d3.select(`#node-${c.target}`).classed('dimmed', false));
+            d3.selectAll('.connection').each(function () {
+                const el = d3.select(this);
+                if (el.attr('data-source') === name || el.attr('data-target') === name) {
+                    el.classed('dimmed', false).classed('highlighted', true);
+                }
+            });
+        } else {
+            tooltip.classList.remove('visible');
+            d3.selectAll('.connection').classed('dimmed', false).classed('highlighted', false);
+            d3.selectAll('.node-shape').classed('dimmed', false);
+        }
+    }
+
+    async function runSimulation() {
+        if (clamped.length !== 2) {
+            updateStatus('error', 'Clamp exactly two nodes first');
+            return;
+        }
+        const btn = document.getElementById('runBtn');
+        btn.disabled = true;
+        btn.textContent = 'RUNNING...';
+        updateStatus('running', 'Running simulation (Python backend)...');
+
+        try {
+            const res = await fetch('/pathfind-pe-run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ params: getNetworkParams(), clampedNodes: clamped })
+            });
+            simData = await res.json();
+            if (simData.error) throw new Error(simData.error);
+
+            const scrubber = document.getElementById('scrubber');
+            scrubber.max = simData.history.length - 1;
+            updateStep(simData.history.length - 1);
+            syncURL();
+            updateStatus('ready', `Simulation complete — ${simData.history.length} steps`);
+        } catch (e) {
+            console.error(e);
+            simData = null;
+            updateStatus('error', 'Simulation failed — is the server running?');
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'RUN SIMULATION';
+    }
+
+    // BFS over the full graph (ground truth) or the active subgraph at a step.
+    function bfsPath(source, target, nodeAllowed) {
+        const prev = { [source]: null };
+        const queue = [source];
+        while (queue.length) {
+            const cur = queue.shift();
+            if (cur === target) {
+                const path = [];
+                for (let n = target; n !== null; n = prev[n]) path.unshift(n);
+                return path;
+            }
+            for (const { target: next } of adjacency[cur] || []) {
+                if (!(next in prev) && nodeAllowed(next)) {
+                    prev[next] = cur;
+                    queue.push(next);
+                }
+            }
+        }
+        return null;
+    }
+
+    function analyzePath(step) {
+        const el = document.getElementById('pathResult');
+        d3.selectAll('.connection').classed('on-path', false);
+        d3.selectAll('.node-shape').classed('on-path', false);
+
+        if (!simData || clamped.length !== 2) {
+            el.textContent = 'Run a simulation to analyze.';
+            return;
+        }
+
+        const [source, target] = clamped;
+        const threshold = parseFloat(document.getElementById('threshold').value);
+        const acts = simData.history[step];
+        const idx = simData.idx_lookup;
+
+        const structural = bfsPath(source, target, () => true);
+        const active = bfsPath(source, target,
+            n => n === source || n === target || acts[idx[n]] >= threshold);
+
+        let html = structural
+            ? `Structural path exists (${structural.length - 1} hops).<br>`
+            : `<span class="notfound">No structural path exists</span> — the graph is disconnected between these nodes.<br>`;
+
+        if (active) {
+            html += `<span class="found">IAC path found at step ${step}:</span><br><span class="path-chain">${active.join(' → ')}</span>`;
+            for (let i = 0; i < active.length - 1; i++) {
+                const a = active[i], b = active[i + 1];
+                d3.selectAll('.connection').each(function () {
+                    const e = d3.select(this);
+                    const s = e.attr('data-source'), t = e.attr('data-target');
+                    if ((s === a && t === b) || (s === b && t === a)) e.classed('on-path', true);
+                });
+                d3.select(`#node-${active[i]}`).classed('on-path', true);
+            }
+        } else {
+            html += `<span class="notfound">No active path at step ${step}</span> (no chain of nodes ≥ ${threshold} links the endpoints).`;
+        }
+        el.innerHTML = html;
+    }
+
+    function updateStep(step) {
+        if (!simData) return;
+        step = Math.max(0, Math.min(step, simData.history.length - 1));
+        currentStep = step;
+
+        document.getElementById('scrubber').value = step;
+        document.getElementById('stepLabel').textContent = `${step} / ${simData.history.length - 1}`;
+
+        const acts = simData.history[step];
+        Object.keys(nodePositions).forEach(name => {
+            const a = acts[simData.idx_lookup[name]];
+            const shape = d3.select(`#node-${name}`);
+            shape.attr("fill", activationColor(a));
+            if (nodePositions[name].type === 'scenario') {
+                shape.attr("r", 15 + Math.max(0, a) * 6);
+            }
+        });
+
+        d3.selectAll('.connection').each(function () {
+            const el = d3.select(this);
+            const s = Math.max(0, acts[simData.idx_lookup[el.attr('data-source')]]);
+            const t = Math.max(0, acts[simData.idx_lookup[el.attr('data-target')]]);
+            const flow = Math.min(1, (s + t) / 2);
+            el.attr('stroke', edgeFlowColor(flow))
+                .attr('stroke-opacity', 0.3 + 0.7 * flow);
+        });
+
+        analyzePath(step);
+    }
+
+    function playbackStep(delta) { updateStep(currentStep + delta); }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+        if (isPlaying) {
+            btn.textContent = 'Pause';
+            playInterval = setInterval(() => {
+                if (!simData) return;
+                if (currentStep >= simData.history.length - 1) currentStep = -1;
+                updateStep(currentStep + 1);
+            }, 50);
+        } else {
+            btn.textContent = 'Play';
+            clearInterval(playInterval);
+        }
+    }
+
+    function updateStatus(type, message) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = message;
+    }
+
+    document.getElementById('threshold').addEventListener('input', () => analyzePath(currentStep));
+
+    // Sharpness only applies in goal-directed mode; grey it out otherwise.
+    function updateSharpnessState() {
+        const directed = document.getElementById('inhibitionMode').value === 'directed';
+        document.getElementById('dirInh').disabled = !directed;
+        document.getElementById('sharpnessGroup').classList.toggle('disabled', !directed);
+    }
+    document.getElementById('inhibitionMode').addEventListener('change', updateSharpnessState);
+
+    function toggleHelp(open) {
+        document.getElementById('helpOverlay').classList.toggle('open', open);
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') toggleHelp(false);
+    });
+
+    window.addEventListener('resize', () => {
+        if (networkData) {
+            renderNetwork();
+            if (simData) updateStep(currentStep);
+        }
+    });
+
+    setupZoom();
+    setupLegendGradient();
+    applyParamsFromURL();
+    updateSharpnessState();
+    generateNetwork(false);
+</script>
+
+<script src="/nav.js"></script>
+</body>
+</html>

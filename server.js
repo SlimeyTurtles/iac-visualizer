@@ -57,6 +57,26 @@ app.post('/pathfind-run', (req, res) => {
     runPythonBridge('pathfind_bridge.py', ['run', JSON.stringify(params), JSON.stringify(clampedNodes)], res);
 });
 
+// ---- Positional-encoding pathfinding IAC (geometric graph + guided spread) ----
+app.post('/pathfind-pe-network', (req, res) => {
+    runPythonBridge('pathfind_pe_bridge.py', ['network', JSON.stringify(req.body.params)], res);
+});
+
+app.post('/pathfind-pe-run', (req, res) => {
+    const { params, clampedNodes } = req.body;
+    runPythonBridge('pathfind_pe_bridge.py', ['run', JSON.stringify(params), JSON.stringify(clampedNodes)], res);
+});
+
+// ---- ART recall-based pathfinding (ESCF-style hubs + best-first search) ----
+app.post('/pathfind-art-network', (req, res) => {
+    runPythonBridge('pathfind_art_bridge.py', ['network', JSON.stringify(req.body.params)], res);
+});
+
+app.post('/pathfind-art-search', (req, res) => {
+    const { params, endpoints } = req.body;
+    runPythonBridge('pathfind_art_bridge.py', ['search', JSON.stringify(params), JSON.stringify(endpoints)], res);
+});
+
 app.listen(port, () => {
     console.log(`\nIAC Network Models running at http://localhost:${port}`);
     console.log(`\nAvailable models:`);
@@ -71,5 +91,7 @@ app.listen(port, () => {
     console.log(`  - Hierarchy Emergence (Corrupted + Decay): http://localhost:${port}/synthetic_12_decay.html`);
     console.log(`  - Forced Hierarchical ART: http://localhost:${port}/hierarchical_art.html`);
     console.log(`  - ESCF (Perception · Consequence · Goal): http://localhost:${port}/escf.html`);
-    console.log(`  - IAC Pathfinding:         http://localhost:${port}/pathfind.html\n`);
+    console.log(`  - IAC Pathfinding:         http://localhost:${port}/pathfind.html`);
+    console.log(`  - IAC Pathfinding (PE):    http://localhost:${port}/pathfind_pe.html`);
+    console.log(`  - ART Pathfinding:         http://localhost:${port}/pathfind_art.html\n`);
 });
