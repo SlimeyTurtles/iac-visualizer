@@ -111,6 +111,7 @@
         .pathpe  { --accent: #ec4899; }
         .pathart { --accent: #f97316; }
         .pathmlp { --accent: #84cc16; }
+        .patharith { --accent: #14b8a6; }
         .rumel   { --accent: #a78bfa; }
         .unsup   { --accent: #f59e0b; }
         .csv     { --accent: #fb7185; }
@@ -168,6 +169,11 @@
         <a href="/pathfind_mlp_bulk.html" class="model-link pathmlp new">
             <h3>MLP Pathfinding (Bulk Metrics) <span class="tag">New</span></h3>
             <p>Sweep the layered planner over seed ranges: success / unreachable / dead-end rates, efficiency distribution vs the easiest possible path, filterable per-seed table with click-through to the interactive page.</p>
+        </a>
+
+        <a href="/pathfind_arith.html" class="model-link patharith new">
+            <h3>Arithmetic Pathfinding (Hebbian Lattice) <span class="tag">New</span></h3>
+            <p>Every (A, B, C) triple is a state; edges are the arithmetic moves X &plusmn;= Y and X = 0. IAC spreads from clamped current + goal states while slow Hebbian potentiation (with homeostatic synaptic scaling) reshapes the lattice as it practices modulo tasks (A,B,C) &rarr; ((A+B) mod C, 0, 0).</p>
         </a>
     </div>
 

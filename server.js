@@ -82,6 +82,21 @@ app.post('/pathfind-mlp-sweep', (req, res) => {
     runPythonBridge('pathfind_mlp_bridge.py', ['sweep', JSON.stringify(params), JSON.stringify(sweep)], res);
 });
 
+// ---- Arithmetic-lattice pathfinding IAC (Hebbian learning on the modulo task) ----
+app.post('/pathfind-arith-network', (req, res) => {
+    runPythonBridge('pathfind_arith_bridge.py', ['network', JSON.stringify(req.body.params)], res);
+});
+
+app.post('/pathfind-arith-run', (req, res) => {
+    const { params, task } = req.body;
+    runPythonBridge('pathfind_arith_bridge.py', ['run', JSON.stringify(params), JSON.stringify(task)], res);
+});
+
+app.post('/pathfind-arith-train', (req, res) => {
+    const { params, train } = req.body;
+    runPythonBridge('pathfind_arith_bridge.py', ['train', JSON.stringify(params), JSON.stringify(train)], res);
+});
+
 // ---- ART recall-based pathfinding (ESCF-style hubs + best-first search) ----
 app.post('/pathfind-art-network', (req, res) => {
     runPythonBridge('pathfind_art_bridge.py', ['network', JSON.stringify(req.body.params)], res);
@@ -110,5 +125,6 @@ app.listen(port, () => {
     console.log(`  - IAC Pathfinding (PE):    http://localhost:${port}/pathfind_pe.html`);
     console.log(`  - ART Pathfinding:         http://localhost:${port}/pathfind_art.html`);
     console.log(`  - MLP Pathfinding:         http://localhost:${port}/pathfind_mlp.html`);
-    console.log(`  - MLP Pathfinding (Bulk):  http://localhost:${port}/pathfind_mlp_bulk.html\n`);
+    console.log(`  - MLP Pathfinding (Bulk):  http://localhost:${port}/pathfind_mlp_bulk.html`);
+    console.log(`  - Arithmetic Pathfinding:  http://localhost:${port}/pathfind_arith.html\n`);
 });

@@ -10,6 +10,7 @@
         { href: '/pathfind_art.html', label: 'ART Pathfinding (Recall-Based)', section: 'Supervised' },
         { href: '/pathfind_mlp.html', label: 'MLP Pathfinding (Layered States)', section: 'Supervised' },
         { href: '/pathfind_mlp_bulk.html', label: 'MLP Pathfinding (Bulk Metrics)', section: 'Supervised' },
+        { href: '/pathfind_arith.html', label: 'Arithmetic Pathfinding (Hebbian Lattice)', section: 'Supervised' },
         { href: '/unsupervised.html', label: 'Concept Learning (Default)', section: 'Unsupervised' },
         { href: '/unsupervised_csv.html', label: 'Concept Learning (CSV)', section: 'Unsupervised' },
         { href: '/sensory_dropout.html', label: 'Hierarchy Emergence ART', section: 'Unsupervised' },

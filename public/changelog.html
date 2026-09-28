@@ -116,6 +116,21 @@
 // { version, date, title, changes: [ ...strings, may contain <strong>/<code> ] }
 const CHANGELOG = [
     {
+        version: '0.11.0',
+        date: '2026-09-28',
+        title: 'Arithmetic Pathfinding — Hebbian learning on the modulo task',
+        changes: [
+            '<strong>Arithmetic Pathfinding (Hebbian Lattice)</strong>: every integer triple (A, B, C) in a configurable domain is a state node; directed edges are the arithmetic moves <code>X &plusmn;= Y</code> (all ordered variable pairs) and <code>X = 0</code>, dropped when they would leave the domain. IAC spreads symmetrically from the clamped current + goal states and a greedy forward walker (dead-end aware) reads out the plan.',
+            '<strong>Hebbian learning</strong>: after each settle, connected pairs potentiate in proportion to their co-activation, with a weight cap and <strong>homeostatic synaptic scaling</strong> — each node’s total incident weight is conserved, so strengthening one route depresses the node’s others. Learned weights travel as a sparse list between the page and the stateless bridge.',
+            '<strong>Modulo curriculum</strong>: train batches of tasks (A,B,C) &rarr; ((A+B) mod C, 0, 0) and watch a rolling success/efficiency curve. Headless finding baked into the page docs: untrained success is distance-limited (~100% at &le;3 hops, ~0% at &ge;5); unconstrained Hebbian imprints a self-exciting attractor on the shared (x, 0, 0) goal axis and hurts; homeostasis + tight cap keeps it near-neutral.',
+            'C-slice heatmap visualization with settle-history scrubber, found/optimal path overlays, learned-weight overlay, and click-to-set task states. Per-panel A/B axis ticks, and hovering any cell shows its exact (A, B, C) state, live activation, the full list of legal moves out of it, and highlights every connected neighbor across panels. New Python bridge <code>pathfind_arith.py</code> with <code>network</code>/<code>run</code>/<code>train</code> commands.',
+            '<strong>Sibling-pool inhibition mode</strong>: each node’s out-neighbors (rival next-steps) mutually inhibit, collapsing the diffuse activation cloud into a sparse ridge (~25 active nodes vs ~160 under global inhibition). This makes co-activation Hebbian path-selective — the only regime found where learning pushes success above the frozen-weights reference.',
+            '<strong>Clamp exemption for sibling inhibition</strong>: clamped endpoints no longer send pool inhibition. Without this the clamped goal suppressed its own feeder states (15 of its 16 neighbors were its pool rivals), cancelling the backward gradient it was simultaneously spreading.',
+            '<strong>Inhibition “Off” mode</strong> for comparison. Measured on 0–5 starts: off = 0.66 success with all 726 nodes flooded (saturation ties blind the walker); global −0.001 = 0.87 with 158 active; sibling −0.05 = 0.68 with 34 active; sibling −0.02 = 0.78 with 100 active. Every mode is perfect at ≤2 hops and ~0% at 5 — the readout limit is gradient reach, not inhibition.',
+            '<strong>Training start ranges</strong>: min/max bounds for sampled (A, B, C) start states (default 0–5), so early arithmetic like A += B stays inside the domain the way a human solver would keep it.',
+        ],
+    },
+    {
         version: '0.10.0',
         date: '2026-09-08',
         title: 'MLP Pathfinding — layered state planner + bulk metrics',

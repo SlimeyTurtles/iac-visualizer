@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arithmetic Pathfinding — Hebbian Lattice Planner</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        /* Arithmetic pathfinding page uses teal accent */
+        :root {
+            --accent: #14b8a6;
+            --accent-dark: #0d9488;
+            --accent-glow: rgba(20, 184, 166, 0.2);
+            --accent-soft: #2dd4bf;
+            --sidebar-width: 336px;
+            --path-found: #fbbf24;
+            --path-optimal: #60a5fa;
+        }
+
+        #sidebar { gap: 14px; }
+
+        .panel-section {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+        }
+        .panel-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .param-row { display: flex; gap: 8px; }
+        .param-row .param-group { flex: 1; }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-card-2);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-md);
+            color: var(--text-default);
+            font-size: 0.85rem;
+        }
+        select:focus { outline: none; border-color: var(--accent); }
+
+        .action-btn {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: #042f2e;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .action-btn:hover:not(:disabled) { background: var(--accent-soft); }
+        .action-btn:disabled { opacity: 0.5; cursor: wait; }
+        .action-btn.secondary {
+            background: var(--bg-card-2);
+            color: var(--text-default);
+            border: 1px solid var(--border-mid);
+        }
+        .action-btn.secondary:hover:not(:disabled) { border-color: var(--accent); }
+        .btn-stack { display: flex; flex-direction: column; gap: 8px; }
+
+        .goal-readout {
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: var(--bg-card-2);
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        .goal-readout strong { color: var(--accent-soft); font-family: monospace; font-size: 0.95rem; }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 12px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+        .stat-grid span { color: var(--text-strong); font-weight: 600; }
+
+        .explainer {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+            font-size: 0.76rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        .explainer h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .check-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+            cursor: pointer;
+        }
+        .check-row input { accent-color: var(--accent); }
+
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: auto;
+            padding: 20px 24px;
+            gap: 14px;
+        }
+        #main h3 { margin: 0; color: var(--text-strong); font-size: 1.05rem; }
+
+        #statusBar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            min-height: 28px;
+        }
+        .outcome-chip {
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.78rem;
+        }
+        .outcome-chip.success { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+        .outcome-chip.fail { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+        .ops-trail {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--path-found);
+        }
+
+        .overlay-toggles { display: flex; gap: 16px; font-size: 0.8rem; color: var(--text-muted); }
+        .overlay-toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .overlay-toggles input { accent-color: var(--accent); }
+
+        #canvasWrap { position: relative; }
+        #canvas { display: block; }
+
+        .slice-label {
+            fill: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        .axis-tick { fill: #64748b; font-size: 8px; }
+        .axis-cap { fill: var(--text-muted); font-size: 10px; font-weight: 600; }
+        /* Hovered cell is white; its connected neighbors get the teal stroke via JS. */
+        #canvas rect.cell:hover { stroke: var(--text-strong, #f1f5f9); stroke-width: 1.6px; }
+
+        .tip-move {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--text-default);
+            padding: 1px 0;
+        }
+        .tip-move .op { color: var(--accent-soft); display: inline-block; min-width: 44px; }
+        .tip-note { margin-top: 8px; font-size: 0.7rem; color: var(--text-muted); font-style: italic; }
+
+        .scrub-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .scrub-row input[type="range"] { flex: 1; }
+        .scrub-row button {
+            padding: 5px 12px;
+            background: var(--bg-card-2);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-md);
+            color: var(--text-default);
+            cursor: pointer;
+            font-size: 0.78rem;
+        }
+        .scrub-row button:hover { border-color: var(--accent); }
+
+        #curveSection { margin-top: 4px; }
+        #curveSection .curve-legend {
+            display: flex;
+            gap: 18px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin: 6px 0 0 4px;
+        }
+        .curve-swatch {
+            display: inline-block;
+            width: 18px;
+            height: 3px;
+            border-radius: 2px;
+            vertical-align: middle;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div style="display: flex; gap: 16px; margin-bottom: 4px;">
+        <a href="/" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">&larr; Home</a>
+    </div>
+    <h2>Arithmetic Pathfinding</h2>
+    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+        Every node is a world state <code>(A,&nbsp;B,&nbsp;C)</code>; edges are the arithmetic
+        moves <code>X&nbsp;&plusmn;=&nbsp;Y</code> and <code>X&nbsp;=&nbsp;0</code> that stay inside
+        the domain. IAC spreads from the clamped current + goal states, a greedy walker
+        reads out the plan, and slow Hebbian potentiation reshapes the weights as the
+        network practices modulo tasks <code>(A,B,C)&nbsp;&rarr;&nbsp;((A+B)&nbsp;mod&nbsp;C,&nbsp;0,&nbsp;0)</code>.
+        Each panel is one <strong>C-slice</strong> of the 3D lattice: within a panel,
+        A runs left&rarr;right and B bottom&rarr;top, so a cell is one exact state —
+        hover it to see its legal moves.
+    </p>
+
+    <div class="panel-section">
+        <h4>Domain</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>A max</label>
+                <input type="number" id="aMax" value="10" min="1" max="15">
+            </div>
+            <div class="param-group">
+                <label>B max</label>
+                <input type="number" id="bMax" value="10" min="1" max="15">
+            </div>
+            <div class="param-group">
+                <label>C max</label>
+                <input type="number" id="cMax" value="5" min="1" max="10">
+            </div>
+        </div>
+        <div style="margin-top: 10px;">
+            <button class="action-btn secondary" id="buildBtn" onclick="buildNetwork()">Build Network</button>
+        </div>
+        <div class="goal-readout" id="netInfo">–</div>
+    </div>
+
+    <div class="panel-section">
+        <h4>IAC Dynamics</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Inhibition mode</label>
+                <select id="inhMode" onchange="onInhModeChange()">
+                    <option value="global">Global (scalar)</option>
+                    <option value="sibling">Sibling pools</option>
+                    <option value="none">Off</option>
+                </select>
+            </div>
+            <div class="param-group">
+                <label>Inhib. strength</label>
+                <input type="number" id="inhibitory" value="-0.001" step="any" data-arrow-step="0.001">
+            </div>
+        </div>
+        <div class="param-row" style="margin-top: 8px;">
+            <div class="param-group">
+                <label>Excitatory w</label>
+                <input type="number" id="excitatory" value="0.05" step="any" data-arrow-step="0.01">
+            </div>
+        </div>
+        <div class="param-row" style="margin-top: 8px;">
+            <div class="param-group">
+                <label>Decay</label>
+                <input type="number" id="decay" value="0.1" step="any" data-arrow-step="0.01">
+            </div>
+            <div class="param-group">
+                <label>Settle steps</label>
+                <input type="number" id="steps" value="80" min="10" max="400">
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Hebbian Learning</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Rate &eta;</label>
+                <input type="number" id="eta" value="0.02" step="any" data-arrow-step="0.005">
+            </div>
+            <div class="param-group">
+                <label>Weight cap</label>
+                <input type="number" id="wMax" value="0.15" step="any" data-arrow-step="0.01">
+            </div>
+        </div>
+        <div class="param-row" style="margin-top: 8px;">
+            <div class="param-group">
+                <label>Homeostasis</label>
+                <input type="number" id="norm" value="1" min="0" max="1" step="any" data-arrow-step="0.1">
+            </div>
+            <div class="param-group">
+                <label>Update gate</label>
+                <select id="learnGate">
+                    <option value="always">Every episode</option>
+                    <option value="success">Success only</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Single Task</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>A</label>
+                <input type="number" id="taskA" value="7" min="0">
+            </div>
+            <div class="param-group">
+                <label>B</label>
+                <input type="number" id="taskB" value="8" min="0">
+            </div>
+            <div class="param-group">
+                <label>C</label>
+                <input type="number" id="taskC" value="3" min="1">
+            </div>
+        </div>
+        <div class="goal-readout">Goal: <strong id="goalReadout">(0, 0, 0)</strong></div>
+        <label class="check-row"><input type="checkbox" id="learnOnRun" checked> Apply Hebbian update on this run</label>
+        <div class="btn-stack" style="margin-top: 10px;">
+            <button class="action-btn" id="runBtn" onclick="runEpisode()">Run Episode</button>
+            <button class="action-btn secondary" onclick="randomTask()">Random Task</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Training</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Episodes</label>
+                <input type="number" id="trainEpisodes" value="100" min="1" max="2000">
+            </div>
+            <div class="param-group">
+                <label>Seed</label>
+                <input type="number" id="trainSeed" value="42">
+            </div>
+        </div>
+        <div class="param-row" style="margin-top: 8px;">
+            <div class="param-group">
+                <label>Start min A</label>
+                <input type="number" id="startMinA" value="0" min="0">
+            </div>
+            <div class="param-group">
+                <label>min B</label>
+                <input type="number" id="startMinB" value="0" min="0">
+            </div>
+            <div class="param-group">
+                <label>min C</label>
+                <input type="number" id="startMinC" value="0" min="0">
+            </div>
+        </div>
+        <div class="param-row" style="margin-top: 8px;">
+            <div class="param-group">
+                <label>Start max A</label>
+                <input type="number" id="startMaxA" value="5" min="0">
+            </div>
+            <div class="param-group">
+                <label>max B</label>
+                <input type="number" id="startMaxB" value="5" min="0">
+            </div>
+            <div class="param-group">
+                <label>max C</label>
+                <input type="number" id="startMaxC" value="5" min="1">
+            </div>
+        </div>
+        <div class="btn-stack" style="margin-top: 10px;">
+            <button class="action-btn" id="trainBtn" onclick="trainBatch()">Train</button>
+            <button class="action-btn secondary" id="resetBtn" onclick="resetLearning()">Reset Learning</button>
+        </div>
+        <div class="stat-grid" style="margin-top: 10px;">
+            <div>Episodes trained</div><div><span id="statEpisodes">0</span></div>
+            <div>Last batch success</div><div><span id="statBatch">–</span></div>
+            <div>Potentiated pairs</div><div><span id="statPairs">0</span></div>
+            <div>Max &Delta;w</div><div><span id="statMaxDw">0</span></div>
+        </div>
+    </div>
+
+    <div class="explainer">
+        <h4>What to try</h4>
+        <p style="margin: 0 0 8px 0;">
+            Untrained, the greedy readout is <strong>distance-limited</strong>: near-perfect
+            up to 3 hops, dead by 5 — the goal's activation gradient simply doesn't reach.
+        </p>
+        <p style="margin: 0 0 8px 0;">
+            Every modulo task shares the same few goals <code>(x, 0, 0)</code>, so
+            <strong>unconstrained</strong> Hebbian potentiation (homeostasis 0, high cap)
+            imprints a self-exciting attractor along that axis and success collapses.
+            Homeostatic synaptic scaling (each node's total incident weight is conserved,
+            so strengthening one route depresses the others) plus a tight cap keeps
+            learning from destroying the gradient.
+        </p>
+        <p style="margin: 0 0 8px 0;">
+            Compare a run with &eta; = 0 against the same seed with learning on, and watch
+            the rolling curve — weight potentiation in state space follows co-activation,
+            not task success, which is exactly why it struggles to encode a <em>relational</em>
+            rule like modulo.
+        </p>
+        <p style="margin: 0;">
+            <strong>Sibling pools</strong> change that picture: each node's out-neighbors
+            (rival next-steps) mutually inhibit, collapsing the diffuse activation cloud
+            into a sparse ridge (~25 active nodes instead of ~160). Co-activation then
+            traces the winning route, so Hebbian learning becomes path-selective — in
+            600-episode runs it's the only regime where learning nudges success
+            <em>above</em> the frozen-weights reference instead of below it.
+        </p>
+    </div>
+</div>
+
+<div id="main">
+    <h3>Activation over the state lattice <span id="frameLabel" style="color: var(--text-muted); font-weight: 400; font-size: 0.8rem;"></span></h3>
+    <div id="statusBar">Build the network to begin.</div>
+    <div class="overlay-toggles">
+        <label><input type="checkbox" id="showFound" checked onchange="redrawOverlays()"><span style="color: var(--path-found);">Found path</span></label>
+        <label><input type="checkbox" id="showOptimal" onchange="redrawOverlays()"><span style="color: var(--path-optimal);">Optimal path (BFS)</span></label>
+        <label><input type="checkbox" id="showLearned" onchange="redrawOverlays()"><span style="color: var(--accent-soft);">Learned weights</span></label>
+    </div>
+    <div id="canvasWrap"><svg id="canvas"></svg></div>
+    <div class="scrub-row">
+        <button onclick="togglePlay()" id="playBtn">Play</button>
+        <input type="range" id="scrub" min="0" max="0" value="0" oninput="setFrame(+this.value)">
+        <span id="scrubLabel">–</span>
+    </div>
+    <div id="curveSection">
+        <h3>Training curve (rolling window of 25)</h3>
+        <svg id="curve" width="900" height="180"></svg>
+        <div class="curve-legend">
+            <span><span class="curve-swatch" style="background: var(--accent);"></span>Success rate</span>
+            <span><span class="curve-swatch" style="background: var(--path-optimal);"></span>Path efficiency (optimal &divide; found)</span>
+        </div>
+    </div>
+</div>
+
+<div class="tooltip" id="tooltip">
+    <div class="tooltip-header" id="tipState"></div>
+    <div class="tooltip-content" id="tipBody"></div>
+</div>
+
+<script>
+const state = {
+    net: null,
+    learned: [],
+    trainLog: [],
+    lastRun: null,
+    frame: 0,
+    playTimer: null,
+    cells: null,
+    geom: null,
+};
+
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function params() {
+    return {
+        aMax: +document.getElementById('aMax').value,
+        bMax: +document.getElementById('bMax').value,
+        cMax: +document.getElementById('cMax').value,
+        excitatory: +document.getElementById('excitatory').value,
+        inhibitory: +document.getElementById('inhibitory').value,
+        inhMode: document.getElementById('inhMode').value,
+        decay: +document.getElementById('decay').value,
+        steps: +document.getElementById('steps').value,
+        eta: +document.getElementById('eta').value,
+        wMax: +document.getElementById('wMax').value,
+        norm: +document.getElementById('norm').value,
+        learnGate: document.getElementById('learnGate').value,
+        historyEvery: 2,
+    };
+}
+
+async function post(url, body) {
+    const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+}
+
+function setBusy(busy) {
+    for (const id of ['buildBtn', 'runBtn', 'trainBtn', 'resetBtn']) {
+        document.getElementById(id).disabled = busy;
+    }
+}
+
+function setStatus(html) { document.getElementById('statusBar').innerHTML = html; }
+
+// ---- geometry: one heatmap panel per C value, wrapped into rows ----
+
+function nodeIdx(a, b, c) {
+    const p = state.net;
+    return (a * (p.bMax + 1) + b) * (p.cMax + 1) + c;
+}
+
+// Mirror of the op rules in pathfind_arith.py, for the hover tooltip.
+const OPS = [
+    ['A+=B', (a, b, c) => [a + b, b, c]], ['A-=B', (a, b, c) => [a - b, b, c]],
+    ['A+=C', (a, b, c) => [a + c, b, c]], ['A-=C', (a, b, c) => [a - c, b, c]],
+    ['B+=A', (a, b, c) => [a, b + a, c]], ['B-=A', (a, b, c) => [a, b - a, c]],
+    ['B+=C', (a, b, c) => [a, b + c, c]], ['B-=C', (a, b, c) => [a, b - c, c]],
+    ['C+=A', (a, b, c) => [a, b, c + a]], ['C-=A', (a, b, c) => [a, b, c - a]],
+    ['C+=B', (a, b, c) => [a, b, c + b]], ['C-=B', (a, b, c) => [a, b, c - b]],
+    ['A=0', (a, b, c) => [0, b, c]], ['B=0', (a, b, c) => [a, 0, c]], ['C=0', (a, b, c) => [a, b, 0]],
+];
+
+function highlightNeighbors(i) {
+    if (state.hoverIdx === i) return;
+    clearNeighborHighlight();
+    state.hoverIdx = i;
+    const [a, b, c] = state.net.states[i];
+    state.hoverTargets = new Set(movesFor(a, b, c).map(m => nodeIdx(...m.to)));
+    state.cells.filter(j => state.hoverTargets.has(j))
+        .attr('stroke', css('--accent-soft'))
+        .attr('stroke-width', 1.5);
+}
+
+function clearNeighborHighlight() {
+    state.hoverIdx = null;
+    if (state.hoverTargets) {
+        const targets = state.hoverTargets;
+        state.cells.filter(j => targets.has(j)).attr('stroke', null);
+        state.hoverTargets = null;
+    }
+}
+
+function movesFor(a, b, c) {
+    const p = state.net;
+    return OPS
+        .map(([label, fn]) => ({ label, to: fn(a, b, c) }))
+        .filter(({ to }) =>
+            to[0] >= 0 && to[0] <= p.aMax &&
+            to[1] >= 0 && to[1] <= p.bMax &&
+            to[2] >= 0 && to[2] <= p.cMax &&
+            !(to[0] === a && to[1] === b && to[2] === c));
+}
+
+function computeGeom() {
+    const p = state.net;
+    const nA = p.aMax + 1, nB = p.bMax + 1, nC = p.cMax + 1;
+    const cell = Math.max(10, Math.min(24, Math.floor(260 / nA)));
+    const gutterL = 16, gutterB = 14;
+    const panelW = nA * cell + 16 + gutterL;
+    const panelH = nB * cell + 30 + gutterB;
+    const wrapW = Math.max(600, document.getElementById('main').clientWidth - 48);
+    const perRow = Math.max(1, Math.floor(wrapW / (panelW + 14)));
+    const rows = Math.ceil(nC / perRow);
+    return {
+        cell, panelW, panelH, perRow,
+        width: Math.min(nC, perRow) * (panelW + 14) + 8,
+        height: rows * (panelH + 14),
+        panelX: (c) => (c % perRow) * (panelW + 14) + 8 + gutterL,
+        panelY: (c) => Math.floor(c / perRow) * (panelH + 14) + 24,
+    };
+}
+
+function cellPos(idx) {
+    const p = state.net, g = state.geom;
+    const s = p.states[idx];
+    const [a, b, c] = s;
+    return {
+        x: g.panelX(c) + a * g.cell,
+        y: g.panelY(c) + (p.bMax - b) * g.cell,
+        cx: g.panelX(c) + a * g.cell + g.cell / 2,
+        cy: g.panelY(c) + (p.bMax - b) * g.cell + g.cell / 2,
+    };
+}
+
+// ---- rendering ----
+
+function renderGrid() {
+    const p = state.net;
+    state.geom = computeGeom();
+    const g = state.geom;
+    const svg = d3.select('#canvas')
+        .attr('width', g.width)
+        .attr('height', g.height);
+    svg.selectAll('*').remove();
+
+    const defs = svg.append('defs');
+    for (const [id, color] of [['arrowFound', css('--path-found')], ['arrowOpt', css('--path-optimal')]]) {
+        defs.append('marker')
+            .attr('id', id).attr('viewBox', '0 0 10 10')
+            .attr('refX', 9).attr('refY', 5)
+            .attr('markerWidth', 5).attr('markerHeight', 5)
+            .attr('orient', 'auto-start-reverse')
+            .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 z').attr('fill', color);
+    }
+
+    for (let c = 0; c <= p.cMax; c++) {
+        const px = g.panelX(c), py = g.panelY(c);
+        const gridW = (p.aMax + 1) * g.cell, gridH = (p.bMax + 1) * g.cell;
+        svg.append('text')
+            .attr('class', 'slice-label')
+            .attr('x', px)
+            .attr('y', py - 8)
+            .text(`C = ${c}`);
+        svg.append('rect')
+            .attr('x', px - 4).attr('y', py - 4)
+            .attr('width', gridW + 8)
+            .attr('height', gridH + 8)
+            .attr('fill', 'none')
+            .attr('stroke', css('--border-soft') || '#1e293b')
+            .attr('rx', 6);
+        // A ticks along the bottom, B ticks up the left side.
+        for (let a = 0; a <= p.aMax; a += 2) {
+            svg.append('text').attr('class', 'axis-tick')
+                .attr('x', px + a * g.cell + g.cell / 2)
+                .attr('y', py + gridH + 13)
+                .attr('text-anchor', 'middle')
+                .text(a);
+        }
+        for (let b = 0; b <= p.bMax; b += 2) {
+            svg.append('text').attr('class', 'axis-tick')
+                .attr('x', px - 7)
+                .attr('y', py + (p.bMax - b) * g.cell + g.cell / 2 + 3)
+                .attr('text-anchor', 'end')
+                .text(b);
+        }
+        if (c === 0) {
+            svg.append('text').attr('class', 'axis-cap')
+                .attr('x', px + gridW + 8)
+                .attr('y', py + gridH + 13)
+                .text('A →');
+            svg.append('text').attr('class', 'axis-cap')
+                .attr('x', 2)
+                .attr('y', py - 8)
+                .text('B ↑');
+        }
+    }
+
+    state.learnedLayer = svg.append('g');
+    const cellLayer = svg.append('g');
+    state.pathLayer = svg.append('g');
+    state.markerLayer = svg.append('g');
+
+    const tooltip = document.getElementById('tooltip');
+    state.cells = cellLayer.selectAll('rect')
+        .data(d3.range(p.states.length))
+        .join('rect')
+        .attr('x', i => cellPos(i).x + 0.5)
+        .attr('y', i => cellPos(i).y + 0.5)
+        .attr('width', g.cell - 1)
+        .attr('height', g.cell - 1)
+        .attr('rx', 2)
+        .attr('class', 'cell')
+        .attr('fill', css('--bg-card'))
+        .on('mousemove', (ev, i) => {
+            const s = p.states[i];
+            const [a, b, c] = s;
+            const acts = currentActs();
+            const act = acts ? acts[i] : 0;
+            let role = '';
+            if (state.lastRun) {
+                if (i === nodeIdx(...state.lastRun.start)) role = ' — current state (S)';
+                else if (i === nodeIdx(...state.lastRun.goal)) role = ' — goal state (G)';
+            }
+            document.getElementById('tipState').textContent = `(${a}, ${b}, ${c})${role}`;
+            highlightNeighbors(i);
+            const moves = movesFor(a, b, c);
+            const moveRows = moves.map(m =>
+                `<div class="tip-move"><span class="op">${m.label}</span> → (${m.to.join(', ')})</div>`
+            ).join('');
+            document.getElementById('tipBody').innerHTML =
+                `activation: <strong>${act.toFixed(3)}</strong> · legal moves: <strong>${moves.length}</strong>` +
+                `<div style="margin-top: 6px;">${moveRows || '<em>none — absorbing state</em>'}</div>` +
+                `<div class="tip-note">click to use as the task's start state</div>`;
+            tooltip.classList.add('visible');
+            const flip = ev.pageX + 300 > window.innerWidth;
+            tooltip.style.left = flip ? (ev.pageX - 290) + 'px' : (ev.pageX + 14) + 'px';
+            tooltip.style.top = Math.min(ev.pageY - 10, window.innerHeight - 320 + window.scrollY) + 'px';
+        })
+        .on('mouseleave', () => {
+            tooltip.classList.remove('visible');
+            clearNeighborHighlight();
+        })
+        .on('click', (ev, i) => {
+            const s = p.states[i];
+            document.getElementById('taskA').value = s[0];
+            document.getElementById('taskB').value = s[1];
+            if (s[2] >= 1) document.getElementById('taskC').value = s[2];
+            updateGoalReadout();
+        });
+
+    updateFrame();
+    redrawOverlays();
+}
+
+function currentActs() {
+    if (!state.lastRun || !state.lastRun.history.length) return null;
+    return state.lastRun.history[state.frame];
+}
+
+function activationColor() {
+    const accent = css('--accent');
+    return d3.scaleLinear()
+        .domain([-0.2, 0, 1])
+        .range(['#312e81', css('--bg-card') || '#1e293b', accent])
+        .clamp(true);
+}
+
+function updateFrame() {
+    if (!state.cells) return;
+    const acts = currentActs();
+    const color = activationColor();
+    state.cells.attr('fill', i => acts ? color(acts[i]) : color(0));
+    const hist = state.lastRun ? state.lastRun.history : [];
+    document.getElementById('scrubLabel').textContent =
+        hist.length ? `frame ${state.frame + 1}/${hist.length}` : '–';
+}
+
+function setFrame(f) {
+    state.frame = f;
+    updateFrame();
+}
+
+function togglePlay() {
+    if (state.playTimer) {
+        clearInterval(state.playTimer);
+        state.playTimer = null;
+        document.getElementById('playBtn').textContent = 'Play';
+        return;
+    }
+    if (!state.lastRun) return;
+    const n = state.lastRun.history.length;
+    if (state.frame >= n - 1) state.frame = 0;
+    document.getElementById('playBtn').textContent = 'Pause';
+    state.playTimer = setInterval(() => {
+        if (state.frame >= n - 1) { togglePlay(); return; }
+        state.frame++;
+        document.getElementById('scrub').value = state.frame;
+        updateFrame();
+    }, 90);
+}
+
+function drawPath(layer, path, color, marker, dashed) {
+    for (let k = 0; k + 1 < path.length; k++) {
+        const p1 = cellPos(path[k]), p2 = cellPos(path[k + 1]);
+        layer.append('line')
+            .attr('x1', p1.cx).attr('y1', p1.cy)
+            .attr('x2', p2.cx).attr('y2', p2.cy)
+            .attr('stroke', color)
+            .attr('stroke-width', dashed ? 1.8 : 2.6)
+            .attr('stroke-dasharray', dashed ? '5,4' : null)
+            .attr('opacity', 0.9)
+            .attr('marker-end', `url(#${marker})`);
+    }
+}
+
+function redrawOverlays() {
+    if (!state.cells) return;
+    state.pathLayer.selectAll('*').remove();
+    state.markerLayer.selectAll('*').remove();
+    state.learnedLayer.selectAll('*').remove();
+
+    if (document.getElementById('showLearned').checked && state.learned.length) {
+        const top = [...state.learned].sort((x, y) => y[2] - x[2]).slice(0, 400);
+        const maxW = top[0][2];
+        for (const [i, j, w] of top) {
+            const p1 = cellPos(i), p2 = cellPos(j);
+            state.learnedLayer.append('line')
+                .attr('x1', p1.cx).attr('y1', p1.cy)
+                .attr('x2', p2.cx).attr('y2', p2.cy)
+                .attr('stroke', css('--accent-soft'))
+                .attr('stroke-width', 1)
+                .attr('opacity', 0.06 + 0.5 * (w / maxW));
+        }
+    }
+
+    if (!state.lastRun) return;
+    const a = state.lastRun.analysis;
+    if (document.getElementById('showOptimal').checked && a.optimal_path) {
+        drawPath(state.pathLayer, a.optimal_path, css('--path-optimal'), 'arrowOpt', true);
+    }
+    if (document.getElementById('showFound').checked && a.found_path) {
+        drawPath(state.pathLayer, a.found_path, css('--path-found'), 'arrowFound', false);
+    }
+
+    const g = state.geom;
+    const si = nodeIdx(...state.lastRun.start), gi = nodeIdx(...state.lastRun.goal);
+    for (const [idx, color, label] of [[si, css('--success') || '#22c55e', 'S'], [gi, css('--path-found'), 'G']]) {
+        const pos = cellPos(idx);
+        state.markerLayer.append('rect')
+            .attr('x', pos.x - 1).attr('y', pos.y - 1)
+            .attr('width', g.cell + 1).attr('height', g.cell + 1)
+            .attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2).attr('rx', 3);
+        state.markerLayer.append('text')
+            .attr('x', pos.cx).attr('y', pos.y - 3)
+            .attr('text-anchor', 'middle')
+            .attr('fill', color).attr('font-size', 9).attr('font-weight', 700)
+            .text(label);
+    }
+}
+
+// ---- actions ----
+
+function onInhModeChange() {
+    // Suggest a working strength for each mode — sibling pools need a much
+    // stronger coefficient than the whole-network scalar sum.
+    const mode = document.getElementById('inhMode').value;
+    const strength = document.getElementById('inhibitory');
+    strength.value = mode === 'sibling' ? -0.05 : mode === 'none' ? 0 : -0.001;
+    strength.disabled = mode === 'none';
+}
+
+function updateGoalReadout() {
+    const A = +document.getElementById('taskA').value;
+    const B = +document.getElementById('taskB').value;
+    const C = Math.max(1, +document.getElementById('taskC').value);
+    document.getElementById('goalReadout').textContent = `(${(A + B) % C}, 0, 0)`;
+}
+
+function randomTask() {
+    const p = params();
+    document.getElementById('taskA').value = Math.floor(Math.random() * (p.aMax + 1));
+    document.getElementById('taskB').value = Math.floor(Math.random() * (p.bMax + 1));
+    document.getElementById('taskC').value = 1 + Math.floor(Math.random() * p.cMax);
+    updateGoalReadout();
+}
+
+async function buildNetwork() {
+    setBusy(true);
+    try {
+        const p = params();
+        state.net = await post('/pathfind-arith-network', { params: p });
+        state.learned = [];
+        state.trainLog = [];
+        state.lastRun = null;
+        state.frame = 0;
+        clampTaskInputs();
+        renderGrid();
+        drawCurve();
+        updateStats(null);
+        document.getElementById('netInfo').innerHTML =
+            `<strong>${state.net.numNodes}</strong> states &middot; ` +
+            `<strong>${state.net.numDirectedEdges}</strong> directed edges &middot; ` +
+            `max out-degree ${state.net.maxOutDegree}`;
+        setStatus('Network built. Run an episode or train on modulo tasks.');
+    } catch (e) {
+        setStatus(`<span style="color:#f87171">Error: ${e.message}</span>`);
+    } finally {
+        setBusy(false);
+    }
+}
+
+function clampTaskInputs() {
+    const p = state.net;
+    const clamp = (id, max) => {
+        const el = document.getElementById(id);
+        el.max = max;
+        el.value = Math.min(+el.value, max);
+    };
+    clamp('taskA', p.aMax);
+    clamp('taskB', p.bMax);
+    clamp('taskC', p.cMax);
+    updateGoalReadout();
+}
+
+async function runEpisode() {
+    if (!state.net) { await buildNetwork(); }
+    setBusy(true);
+    try {
+        const A = +document.getElementById('taskA').value;
+        const B = +document.getElementById('taskB').value;
+        const C = Math.max(1, +document.getElementById('taskC').value);
+        const goal = [(A + B) % C, 0, 0];
+        const res = await post('/pathfind-arith-run', {
+            params: params(),
+            task: {
+                start: [A, B, C],
+                goal,
+                learn: document.getElementById('learnOnRun').checked,
+                learned: state.learned,
+            },
+        });
+        state.learned = res.learned;
+        state.lastRun = res;
+        state.frame = res.history.length - 1;
+        const scrub = document.getElementById('scrub');
+        scrub.max = res.history.length - 1;
+        scrub.value = state.frame;
+        updateFrame();
+        redrawOverlays();
+        updateStats(null);
+
+        const a = res.analysis;
+        const chip = a.outcome === 'success'
+            ? '<span class="outcome-chip success">success</span>'
+            : `<span class="outcome-chip fail">${a.outcome.replace('_', ' ')}</span>`;
+        const ops = a.found_ops.length
+            ? `<span class="ops-trail">${a.found_ops.join(' &rarr; ')}</span>` : '';
+        setStatus(
+            `${chip} <span>(${res.start.join(',')}) &rarr; (${res.goal.join(',')})</span>` +
+            `<span>found ${a.found_len ?? '–'} / optimal ${a.optimal_len ?? '–'} hops</span>` +
+            `<span>efficiency ${a.efficiency != null ? a.efficiency.toFixed(2) : '–'}</span> ${ops}`
+        );
+    } catch (e) {
+        setStatus(`<span style="color:#f87171">Error: ${e.message}</span>`);
+    } finally {
+        setBusy(false);
+    }
+}
+
+async function trainBatch() {
+    if (!state.net) { await buildNetwork(); }
+    setBusy(true);
+    setStatus('Training…');
+    try {
+        const episodes = +document.getElementById('trainEpisodes').value;
+        const seed = +document.getElementById('trainSeed').value + state.trainLog.length;
+        const res = await post('/pathfind-arith-train', {
+            params: params(),
+            train: {
+                episodes, seed, learned: state.learned,
+                startMin: ['A', 'B', 'C'].map(v => +document.getElementById('startMin' + v).value),
+                startMax: ['A', 'B', 'C'].map(v => +document.getElementById('startMax' + v).value),
+            },
+        });
+        state.learned = res.learned;
+        state.trainLog.push(...res.rows);
+        const ok = res.rows.filter(r => r.outcome === 'success').length;
+        updateStats(`${ok}/${res.rows.length} (${(100 * ok / res.rows.length).toFixed(0)}%)`);
+        drawCurve();
+        redrawOverlays();
+        setStatus(`Trained ${res.rows.length} modulo episodes — ${ok} solved. ` +
+            `Total: ${state.trainLog.length} episodes.`);
+    } catch (e) {
+        setStatus(`<span style="color:#f87171">Error: ${e.message}</span>`);
+    } finally {
+        setBusy(false);
+    }
+}
+
+function resetLearning() {
+    state.learned = [];
+    state.trainLog = [];
+    updateStats(null);
+    drawCurve();
+    redrawOverlays();
+    setStatus('Learned weights and training log cleared.');
+}
+
+function updateStats(batchLabel) {
+    document.getElementById('statEpisodes').textContent = state.trainLog.length;
+    if (batchLabel) document.getElementById('statBatch').textContent = batchLabel;
+    else if (!state.trainLog.length) document.getElementById('statBatch').textContent = '–';
+    document.getElementById('statPairs').textContent = state.learned.length;
+    const maxDw = state.learned.reduce((m, e) => Math.max(m, e[2]), 0);
+    document.getElementById('statMaxDw').textContent = maxDw.toFixed(4);
+}
+
+// ---- learning curve ----
+
+function rolling(values, window) {
+    const out = [];
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) {
+        sum += values[i];
+        if (i >= window) sum -= values[i - window];
+        out.push(sum / Math.min(i + 1, window));
+    }
+    return out;
+}
+
+function drawCurve() {
+    const svg = d3.select('#curve');
+    svg.selectAll('*').remove();
+    const W = Math.max(500, document.getElementById('main').clientWidth - 60);
+    const H = 180, m = { l: 38, r: 12, t: 10, b: 24 };
+    svg.attr('width', W).attr('height', H);
+
+    const log = state.trainLog;
+    if (log.length < 2) {
+        svg.append('text')
+            .attr('x', W / 2).attr('y', H / 2)
+            .attr('text-anchor', 'middle')
+            .attr('fill', css('--text-muted') || '#64748b')
+            .attr('font-size', 12)
+            .text('Train some episodes to see the curve.');
+        return;
+    }
+
+    const succ = rolling(log.map(r => r.outcome === 'success' ? 1 : 0), 25);
+    const eff = rolling(log.map(r => r.efficiency || 0), 25);
+    const x = d3.scaleLinear().domain([0, log.length - 1]).range([m.l, W - m.r]);
+    const y = d3.scaleLinear().domain([0, 1]).range([H - m.b, m.t]);
+
+    for (const tick of [0, 0.25, 0.5, 0.75, 1]) {
+        svg.append('line')
+            .attr('x1', m.l).attr('x2', W - m.r)
+            .attr('y1', y(tick)).attr('y2', y(tick))
+            .attr('stroke', css('--border-soft') || '#1e293b');
+        svg.append('text')
+            .attr('x', m.l - 6).attr('y', y(tick) + 3)
+            .attr('text-anchor', 'end')
+            .attr('fill', css('--text-muted') || '#64748b').attr('font-size', 9)
+            .text(tick.toFixed(2));
+    }
+    for (const tick of x.ticks(6)) {
+        svg.append('text')
+            .attr('x', x(tick)).attr('y', H - 8)
+            .attr('text-anchor', 'middle')
+            .attr('fill', css('--text-muted') || '#64748b').attr('font-size', 9)
+            .text(tick);
+    }
+
+    const line = d3.line().x((d, i) => x(i)).y(d => y(d));
+    svg.append('path').attr('d', line(eff))
+        .attr('fill', 'none').attr('stroke', css('--path-optimal')).attr('stroke-width', 1.6)
+        .attr('opacity', 0.8);
+    svg.append('path').attr('d', line(succ))
+        .attr('fill', 'none').attr('stroke', css('--accent')).attr('stroke-width', 2.2);
+}
+
+// ---- init ----
+
+for (const id of ['taskA', 'taskB', 'taskC']) {
+    document.getElementById(id).addEventListener('input', updateGoalReadout);
+}
+updateGoalReadout();
+buildNetwork().then(() => runEpisode());
+</script>
+<script src="/nav.js"></script>
+</body>
+</html>
