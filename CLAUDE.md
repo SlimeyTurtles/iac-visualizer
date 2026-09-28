@@ -20,6 +20,15 @@ A static-ish Node/Express site (`server.js`) that serves a set of HTML pages fro
 
 ## Conventions you need to know
 
+### Changelog — update on EVERY commit
+
+[public/changelog.html](public/changelog.html) is the site's versioned changelog. **Before every commit, add or update an entry** in the `CHANGELOG` array at the bottom of that file (newest first). Rules:
+- **Minor bump** (0.x.0) for new pages, models, or user-visible features.
+- **Patch bump** (0.x.y) for fixes, tweaks, tuning, refactors, docs, or deploy changes.
+- If a commit only touches the changelog itself, no bump.
+- One version can bundle several commits made in the same session — extend the top entry instead of adding a new one if you're still on the same version's work.
+- Entry format: `{ version, date (YYYY-MM-DD), title, changes: [...] }`; change strings may use `<strong>`/`<code>`.
+
 ### Shared design system
 
 Every page links [public/theme.css](public/theme.css). It defines design tokens as CSS custom properties (`--accent`, `--bg-panel`, `--text-muted`, etc.) and the shared component styles (sidebar, tooltip, info-card, episode-list, btn-primary, etc.). **Don't hardcode colors.** Use `var(--accent)`, `var(--text-muted)`, `var(--success)`, etc.

@@ -67,6 +67,21 @@ app.post('/pathfind-pe-run', (req, res) => {
     runPythonBridge('pathfind_pe_bridge.py', ['run', JSON.stringify(params), JSON.stringify(clampedNodes)], res);
 });
 
+// ---- Layered MLP-style pathfinding IAC (root state -> goal state planning) ----
+app.post('/pathfind-mlp-network', (req, res) => {
+    runPythonBridge('pathfind_mlp_bridge.py', ['network', JSON.stringify(req.body.params)], res);
+});
+
+app.post('/pathfind-mlp-run', (req, res) => {
+    const { params, goal } = req.body;
+    runPythonBridge('pathfind_mlp_bridge.py', ['run', JSON.stringify(params), JSON.stringify({ goal })], res);
+});
+
+app.post('/pathfind-mlp-sweep', (req, res) => {
+    const { params, sweep } = req.body;
+    runPythonBridge('pathfind_mlp_bridge.py', ['sweep', JSON.stringify(params), JSON.stringify(sweep)], res);
+});
+
 // ---- ART recall-based pathfinding (ESCF-style hubs + best-first search) ----
 app.post('/pathfind-art-network', (req, res) => {
     runPythonBridge('pathfind_art_bridge.py', ['network', JSON.stringify(req.body.params)], res);
@@ -93,5 +108,7 @@ app.listen(port, () => {
     console.log(`  - ESCF (Perception · Consequence · Goal): http://localhost:${port}/escf.html`);
     console.log(`  - IAC Pathfinding:         http://localhost:${port}/pathfind.html`);
     console.log(`  - IAC Pathfinding (PE):    http://localhost:${port}/pathfind_pe.html`);
-    console.log(`  - ART Pathfinding:         http://localhost:${port}/pathfind_art.html\n`);
+    console.log(`  - ART Pathfinding:         http://localhost:${port}/pathfind_art.html`);
+    console.log(`  - MLP Pathfinding:         http://localhost:${port}/pathfind_mlp.html`);
+    console.log(`  - MLP Pathfinding (Bulk):  http://localhost:${port}/pathfind_mlp_bulk.html\n`);
 });

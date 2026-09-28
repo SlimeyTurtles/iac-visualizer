@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Changelog — Semantic Network Models</title>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        body {
+            background: radial-gradient(ellipse at top, var(--bg-panel) 0%, var(--bg-app) 60%);
+            min-height: 100vh;
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 80px 24px 60px 24px;
+            overflow: auto;
+        }
+
+        .header { text-align: center; max-width: 720px; margin-bottom: 48px; }
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-strong);
+            margin: 0 0 14px 0;
+            letter-spacing: -0.02em;
+        }
+        .header p { font-size: 1rem; color: var(--text-muted); margin: 0; line-height: 1.6; }
+
+        .timeline { max-width: 720px; width: 100%; position: relative; padding-left: 28px; }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 7px;
+            top: 8px;
+            bottom: 8px;
+            width: 2px;
+            background: linear-gradient(to bottom, var(--accent), var(--border-mid));
+        }
+
+        .release {
+            position: relative;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-xl);
+            padding: 20px 24px;
+            margin-bottom: 24px;
+        }
+        .release::before {
+            content: '';
+            position: absolute;
+            left: -27px;
+            top: 26px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--bg-app);
+            border: 3px solid var(--accent);
+        }
+        .release:first-child::before { background: var(--accent); box-shadow: 0 0 10px var(--accent-glow, rgba(245, 158, 11, 0.4)); }
+
+        .release-head {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 4px;
+        }
+        .release-version {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--accent);
+            font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        }
+        .release-date { font-size: 0.8rem; color: var(--text-dim); }
+        .release-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-strong);
+            margin: 0 0 10px 0;
+        }
+        .release ul { margin: 0; padding-left: 20px; }
+        .release li {
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 4px;
+        }
+        .release li strong { color: var(--text-strong); font-weight: 600; }
+        .release li code {
+            font-size: 0.8rem;
+            background: var(--bg-card);
+            padding: 1px 5px;
+            border-radius: var(--radius-sm);
+            color: var(--text-strong);
+        }
+
+        .footer { margin-top: 40px; font-size: 0.75rem; color: var(--border-strong); text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Changelog</h1>
+    <p>Everything that has happened to this site, newest first. Versions follow semver-ish rules: minor bumps for new pages/models/features, patch bumps for fixes and tweaks.</p>
+</div>
+
+<div class="timeline" id="timeline"></div>
+
+<div class="footer">
+    Use the menu in the top-right corner to navigate between models.
+</div>
+
+<script>
+// Newest first. To add a release: prepend an object here.
+// { version, date, title, changes: [ ...strings, may contain <strong>/<code> ] }
+const CHANGELOG = [
+    {
+        version: '0.10.0',
+        date: '2026-09-08',
+        title: 'MLP Pathfinding — layered state planner + bulk metrics',
+        changes: [
+            '<strong>MLP Pathfinding (Layered States)</strong>: MLP-shaped IAC network where each node is a world state and each random affordance-weighted edge is an action. Clamp the single bottom (current-state) node and a chosen top-layer goal; symmetric IAC dynamics meet in the middle and a greedy connected ascent reads out the plan. Shift-click lesioning, path overlays, shareable URLs.',
+            '<strong>MLP Pathfinding (Bulk Metrics)</strong>: sweep hundreds of seeds server-side; per-seed outcomes (success / unreachable / dead end / wrong top), efficiency histogram, sortable + filterable table with click-through to any seed.',
+            '<strong>Efficiency metric</strong>: found path’s mean affordance divided by the easiest possible path’s (exact Viterbi DP over the layered DAG) — a graded 0–1 success score instead of a binary hit/miss.',
+            'New Python bridge <code>pathfind_mlp.py</code> with <code>network</code>/<code>run</code>/<code>sweep</code> commands.',
+        ],
+    },
+    {
+        version: '0.9.0',
+        date: '2026-09-08',
+        title: 'Changelog page',
+        changes: [
+            'Added this <strong>Changelog</strong> page with versioned release history, wired into the shared nav.',
+            'Every commit from here on updates this page.',
+        ],
+    },
+    {
+        version: '0.8.0',
+        date: '2026-09-07',
+        title: 'Pathfinding family — three simulations',
+        changes: [
+            '<strong>IAC Pathfinding (Scenarios ↔ Actions)</strong>: randomly connected scenario/action graph; clamp two endpoints and let plain IAC spreading activation find a path.',
+            '<strong>IAC Pathfinding (Positional Encoding)</strong>: nodes get position vectors, connections follow nearest-neighbor similarity, goal-directed inhibition routes the plan.',
+            '<strong>ART Pathfinding (Recall-Based)</strong>: ESCF-style planner — ART learns state hubs, best-first recursive recall scored by cosine to the goal.',
+            'Canonical output rectification, sibling inhibition, flow-colored edges, and shareable URLs added to the pathfinding pages.',
+        ],
+    },
+    {
+        version: '0.7.0',
+        date: '2026-09-06',
+        title: 'ESCF page',
+        changes: [
+            'Added the <strong>Emergent Semantic Cognition Framework</strong> page: one hub-and-spoke mechanism run in perceptual, consequence, and goal-lens modes, implementing the paper directly.',
+            'Model lives in <code>escf_model.js</code>, shared with a headless tuning script.',
+        ],
+    },
+    {
+        version: '0.6.0',
+        date: '2026-09-03',
+        title: 'Home server deployment',
+        changes: [
+            'Site now deploys to the home server via <strong>Docker + a self-hosted GitHub Actions runner</strong>; live at sc.avinh.net.',
+            'Retired the old EC2 deployment.',
+        ],
+    },
+    {
+        version: '0.5.0',
+        date: '2026-06-09',
+        title: 'Synthetic datasets, lesion tests, downloads',
+        changes: [
+            'Added scripts for generating and analyzing <strong>synthetic datasets</strong> with corrupted samples (the Synthetic 12 family of pages).',
+            'Added <strong>PCA download</strong> and a hub similarity matrix.',
+            'Added (then fixed) a <strong>lesion test</strong> for Simulation 1.',
+            'Added prototype data and download functionality for the synthetic datasets.',
+        ],
+    },
+    {
+        version: '0.4.0',
+        date: '2026-05-19',
+        title: 'ART with marks data + automatic deployment',
+        changes: [
+            'Added <strong>ART with marks data</strong> and generic prototypes.',
+            'Restructured the project layout.',
+            'Set up <strong>GitHub Actions</strong> for automatic deployment.',
+            'Tuned prototype weights.',
+        ],
+    },
+    {
+        version: '0.3.0',
+        date: '2026-04-11',
+        title: 'ART model + PCA visualization',
+        changes: [
+            'Added the first <strong>ART model</strong> page.',
+            'Hovering a hub shows its expected weights.',
+            'Refactored code structure for readability and maintainability.',
+            'Added a <strong>PCA chart</strong> visualization with interaction for hub templates.',
+        ],
+    },
+    {
+        version: '0.2.0',
+        date: '2026-03-02',
+        title: 'Rumelhart model',
+        changes: [
+            'Added the <strong>Rumelhart backprop model</strong> page — concept-property semantic memory with distributed representations.',
+            'General code cleanup.',
+        ],
+    },
+    {
+        version: '0.1.0',
+        date: '2026-02-09',
+        title: 'Initial release',
+        changes: [
+            'Initial commit: the <strong>IAC Network Visualizer</strong> — Interactive Activation and Competition on the Jets &amp; Sharks dataset, with a Node/Express server bridging to a Python backend.',
+        ],
+    },
+];
+
+const timeline = document.getElementById('timeline');
+CHANGELOG.forEach(rel => {
+    const div = document.createElement('div');
+    div.className = 'release';
+    div.innerHTML = `
+        <div class="release-head">
+            <span class="release-version">v${rel.version}</span>
+            <span class="release-date">${rel.date}</span>
+        </div>
+        <h3 class="release-title">${rel.title}</h3>
+        <ul>${rel.changes.map(c => `<li>${c}</li>`).join('')}</ul>
+    `;
+    timeline.appendChild(div);
+});
+</script>
+
+<script src="/nav.js"></script>
+</body>
+</html>

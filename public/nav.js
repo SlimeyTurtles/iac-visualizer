@@ -8,6 +8,8 @@
         { href: '/pathfind.html', label: 'IAC Pathfinding (Scenarios ↔ Actions)', section: 'Supervised' },
         { href: '/pathfind_pe.html', label: 'IAC Pathfinding (Positional Encoding)', section: 'Supervised' },
         { href: '/pathfind_art.html', label: 'ART Pathfinding (Recall-Based)', section: 'Supervised' },
+        { href: '/pathfind_mlp.html', label: 'MLP Pathfinding (Layered States)', section: 'Supervised' },
+        { href: '/pathfind_mlp_bulk.html', label: 'MLP Pathfinding (Bulk Metrics)', section: 'Supervised' },
         { href: '/unsupervised.html', label: 'Concept Learning (Default)', section: 'Unsupervised' },
         { href: '/unsupervised_csv.html', label: 'Concept Learning (CSV)', section: 'Unsupervised' },
         { href: '/sensory_dropout.html', label: 'Hierarchy Emergence ART', section: 'Unsupervised' },
@@ -16,6 +18,7 @@
         { href: '/synthetic_12_decay.html', label: 'Hierarchy Emergence (Corrupted + Decay)', section: 'Unsupervised' },
         { href: '/hierarchical_art.html', label: 'Forced Hierarchical ART', section: 'Unsupervised' },
         { href: '/escf.html', label: 'ESCF (Perception · Consequence · Goal)', section: 'Unsupervised' },
+        { href: '/changelog.html', label: 'Changelog', section: 'Site' },
     ];
 
     const style = document.createElement('style');

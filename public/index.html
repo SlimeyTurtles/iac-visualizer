@@ -110,6 +110,7 @@
         .pathf   { --accent: #06b6d4; }
         .pathpe  { --accent: #ec4899; }
         .pathart { --accent: #f97316; }
+        .pathmlp { --accent: #84cc16; }
         .rumel   { --accent: #a78bfa; }
         .unsup   { --accent: #f59e0b; }
         .csv     { --accent: #fb7185; }
@@ -157,6 +158,16 @@
         <a href="/pathfind_art.html" class="model-link pathart new">
             <h3>ART Pathfinding (Recall-Based) <span class="tag">New</span></h3>
             <p>ESCF-style planning: an ART layer learns state hubs (vigilance = abstraction dial), hubs link to successor hubs, and best-first recursive recall &mdash; scored by cosine to the goal &mdash; searches until the goal hub resonates.</p>
+        </a>
+
+        <a href="/pathfind_mlp.html" class="model-link pathmlp new">
+            <h3>MLP Pathfinding (Layered States) <span class="tag">New</span></h3>
+            <p>MLP-shaped state graph: one current-state node at the bottom, random affordance-weighted actions between layers. Clamp the root and a goal, and measure whether IAC activation carves the easiest path. Supports lesioning.</p>
+        </a>
+
+        <a href="/pathfind_mlp_bulk.html" class="model-link pathmlp new">
+            <h3>MLP Pathfinding (Bulk Metrics) <span class="tag">New</span></h3>
+            <p>Sweep the layered planner over seed ranges: success / unreachable / dead-end rates, efficiency distribution vs the easiest possible path, filterable per-seed table with click-through to the interactive page.</p>
         </a>
     </div>
 
@@ -211,7 +222,7 @@
 </div>
 
 <div class="footer">
-    Use the menu in the top-right corner to navigate between models.
+    Use the menu in the top-right corner to navigate between models. &middot; <a href="/changelog.html" style="color: var(--text-dim);">Changelog</a>
 </div>
 
 <script src="/nav.js"></script>

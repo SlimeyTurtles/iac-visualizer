@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLP Pathfinding — Layered State Planner</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        /* MLP pathfinding page uses lime accent */
+        :root {
+            --accent: #84cc16;
+            --accent-dark: #65a30d;
+            --accent-glow: rgba(132, 204, 22, 0.2);
+            --accent-soft: #a3e635;
+            --sidebar-width: 336px;
+            /* Path overlay colors: amber highlighter for the activation path,
+               blue dashes for the easiest path — both distinct from the
+               grey->green activation flow coloring. */
+            --path-found: #fbbf24;
+            --path-optimal: #60a5fa;
+        }
+
+        #sidebar { gap: 14px; }
+        #sidebar h2 { margin: 0 0 4px 0; font-size: 1.4rem; }
+
+        .panel-section {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+        }
+        .panel-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .param-row { display: flex; gap: 8px; }
+        .param-row .param-group { flex: 1; }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-card-2);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-md);
+            color: var(--text-default);
+            font-size: 0.85rem;
+        }
+        select:focus { outline: none; border-color: var(--accent); }
+
+        #genBtn {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: #1a2e05;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+        #genBtn:hover { background: var(--accent-dark); color: white; }
+
+        #runBtn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            border: none;
+            border-radius: var(--radius-lg);
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #runBtn:hover { background: linear-gradient(135deg, #059669, #047857); }
+        #runBtn:disabled { background: #374151; cursor: not-allowed; }
+
+        #shareBtn, #clearLesionsBtn {
+            width: 100%;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid var(--accent);
+            border-radius: var(--radius-md);
+            color: var(--accent-soft);
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #shareBtn:hover, #clearLesionsBtn:hover { background: var(--accent-glow); }
+        #clearLesionsBtn { margin-top: 8px; border-color: var(--danger); color: var(--danger); }
+        #clearLesionsBtn:hover { background: rgba(239, 68, 68, 0.15); }
+
+        .endpoint-tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin: 2px;
+        }
+        .endpoint-tag.source { background: var(--success); color: var(--bg-card); }
+        .endpoint-tag.target { background: var(--warning); color: var(--bg-card); }
+        .endpoint-tag.lesioned { background: var(--danger); color: white; }
+
+        #pathResult { font-size: 0.82rem; line-height: 1.55; color: var(--text-muted); }
+        #pathResult .found { color: var(--success); font-weight: 600; }
+        #pathResult .notfound { color: var(--danger); font-weight: 600; }
+        #pathResult .warn { color: var(--warning); font-weight: 600; }
+        #pathResult .path-chain { color: var(--accent-soft); font-family: monospace; font-size: 0.78rem; }
+        #pathResult .opt-chain { color: var(--text-dim); font-family: monospace; font-size: 0.78rem; }
+        #pathResult .metric { color: var(--text-strong); font-weight: 600; }
+        .eff-bar {
+            height: 8px;
+            background: var(--bg-card-2);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 4px 0 6px 0;
+        }
+        .eff-bar > div { height: 100%; background: linear-gradient(90deg, var(--danger), var(--warning), var(--success)); }
+
+        .scrubber-section { margin-top: auto; }
+
+        .connection { transition: stroke-opacity 0.1s; }
+        .connection.dimmed { stroke-opacity: 0.08; }
+        .connection.highlighted { stroke-opacity: 1; stroke-width: 3px; }
+        .connection.lesioned-edge { stroke-opacity: 0.05; }
+        /* Invisible wide twin of each edge so thin lines are easy to hover. */
+        .edge-hit { stroke: transparent; stroke-width: 14px; cursor: pointer; }
+        .edge-tip-row { font-size: 0.82rem; color: var(--text-muted); }
+        .edge-tip-row span { font-weight: 600; color: var(--accent); }
+
+        /* Highlighter-style path overlays: wide translucent stroke under the
+           nodes, so the edge flow colors stay visible through it. */
+        .path-overlay { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+        .path-overlay.found { stroke: var(--path-found); stroke-width: 10px; opacity: 0.28; }
+        .path-overlay.optimal { stroke: var(--path-optimal); stroke-width: 2.5px; stroke-dasharray: 7 5; opacity: 0.85; }
+
+        .overlay-toggles { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+        .overlay-toggles label { display: flex; align-items: center; gap: 7px; font-size: 0.8rem; cursor: pointer; margin: 0; }
+        .overlay-toggles input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--accent); cursor: pointer; }
+
+        .node-shape { stroke: var(--border-strong); stroke-width: 2px; cursor: pointer; transition: stroke 0.15s; }
+        .node-shape:hover { stroke: var(--accent-soft); stroke-width: 3px; }
+        .node-shape.clamped-source { stroke: var(--success); stroke-width: 4px; }
+        .node-shape.clamped-target { stroke: var(--warning); stroke-width: 4px; }
+        .node-shape.lesioned { opacity: 0.25; stroke: var(--danger); }
+        .node-shape.dimmed { opacity: 0.3; }
+        .node-label { font-size: 10px; text-anchor: middle; pointer-events: none; }
+        .lesion-x { stroke: var(--danger); stroke-width: 2.5px; pointer-events: none; }
+        .layer-label { font-size: 11px; fill: var(--text-dim); text-anchor: end; }
+
+        .legend-shapes { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; display: flex; gap: 14px; flex-wrap: wrap; }
+
+        .tooltip-activation { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
+        .tooltip-activation span { font-weight: 600; color: var(--accent); }
+        .tooltip-connection-item {
+            display: inline-block;
+            padding: 2px 6px;
+            background: var(--border-mid);
+            border-radius: 3px;
+            margin: 2px;
+            font-size: 0.75rem;
+            color: var(--text-default);
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div style="display: flex; gap: 16px; margin-bottom: 4px;">
+        <a href="/" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">&larr; Home</a>
+        <a href="/pathfind_mlp_bulk.html" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">Bulk Metrics &rarr;</a>
+    </div>
+    <h2>MLP Pathfinding</h2>
+    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+        Layered state graph: the bottom node is the current state, edges are
+        actions with random affordance weights. Click a top node to set the
+        goal, run, and see whether IAC activation carves the easiest path.
+        <strong>Shift-click</strong> any node to lesion it.
+    </p>
+
+    <div class="panel-section">
+        <h4>Network</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Width</label>
+                <input type="number" id="width" value="6" min="2" max="20">
+            </div>
+            <div class="param-group">
+                <label>Depth (layers)</label>
+                <input type="number" id="depth" value="5" min="3" max="12">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Connection Prob</label>
+                <input type="number" id="connP" value="0.35" step="any" data-arrow-step="0.05" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Seed</label>
+                <input type="number" id="seed" value="42" min="0">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Weight Mean</label>
+                <input type="number" id="wMean" value="0.5" step="any" data-arrow-step="0.05">
+            </div>
+            <div class="param-group">
+                <label>Weight SD</label>
+                <input type="number" id="wSd" value="0.25" step="any" data-arrow-step="0.05" min="0">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Clip Low</label>
+                <input type="number" id="wLo" value="0" step="any" data-arrow-step="0.05">
+            </div>
+            <div class="param-group">
+                <label>Clip High</label>
+                <input type="number" id="wHi" value="1" step="any" data-arrow-step="0.05">
+            </div>
+        </div>
+        <button id="genBtn" onclick="generateNetwork(true)">Generate Network</button>
+    </div>
+
+    <div class="panel-section">
+        <h4>Dynamics</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Excitatory</label>
+                <input type="number" id="exc" value="0.1" step="any" data-arrow-step="0.01" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Inhibitory</label>
+                <input type="number" id="inh" value="-0.05" step="any" data-arrow-step="0.01" min="-1" max="0">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Decay</label>
+                <input type="number" id="dec" value="0.05" step="any" data-arrow-step="0.01" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Steps</label>
+                <input type="number" id="steps" value="200" min="1" max="1000">
+            </div>
+        </div>
+        <div class="param-group">
+            <label>Output Rule</label>
+            <select id="rectify">
+                <option value="true">Canonical: only active units transmit ([a]+)</option>
+                <option value="false">Raw: negative activations transmit too</option>
+            </select>
+        </div>
+    </div>
+
+    <button id="runBtn" onclick="runSimulation()">RUN SIMULATION</button>
+    <button id="shareBtn" onclick="shareLink()">Copy Share Link</button>
+
+    <div class="panel-section">
+        <h4>Goal &amp; Lesions</h4>
+        <div id="goalList" style="font-size: 0.82rem; color: var(--text-muted);">Click a top-layer node to set the goal</div>
+        <div id="lesionList" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 6px;"></div>
+        <button id="clearLesionsBtn" onclick="clearLesions()" style="display: none;">Clear Lesions</button>
+    </div>
+
+    <div class="panel-section">
+        <h4>Path Analysis</h4>
+        <div class="overlay-toggles">
+            <label><input type="checkbox" id="showFound" checked onchange="analyzePath(currentStep)">
+                <span style="color: var(--path-found);">Show activation path</span></label>
+            <label><input type="checkbox" id="showOptimal" checked onchange="analyzePath(currentStep)">
+                <span style="color: var(--path-optimal);">Show easiest path</span></label>
+        </div>
+        <div id="pathResult">Run a simulation to analyze.</div>
+    </div>
+
+    <div id="status" class="status">Loading network...</div>
+
+    <div class="scrubber-section">
+        <label>
+            <span>Time Step</span>
+            <span id="stepLabel">0 / 0</span>
+        </label>
+        <input type="range" id="scrubber" min="0" max="0" value="0" oninput="updateStep(parseInt(this.value))">
+        <div class="playback-controls">
+            <button onclick="playbackStep(-10)">-10</button>
+            <button onclick="playbackStep(-1)">-1</button>
+            <button onclick="togglePlay()" id="playBtn">Play</button>
+            <button onclick="playbackStep(1)">+1</button>
+            <button onclick="playbackStep(10)">+10</button>
+        </div>
+    </div>
+</div>
+
+<div id="viz-container">
+    <svg id="canvas"></svg>
+    <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+    <div id="edge-tooltip" class="tooltip"></div>
+    <div id="tooltip" class="tooltip">
+        <div class="tooltip-header" id="tooltip-name"></div>
+        <div class="tooltip-activation">Activation: <span id="tooltip-activation">0.000</span></div>
+        <div style="font-size: 0.8rem; color: var(--text-muted);">
+            <div style="margin-bottom: 4px;">Connections (affordance):</div>
+            <div id="tooltip-connections-list"></div>
+        </div>
+    </div>
+    <div class="legend">
+        <h4>Activation Level</h4>
+        <div class="legend-gradient" id="legendGradient"></div>
+        <div class="legend-labels">
+            <span>-0.2</span>
+            <span>0</span>
+            <span>1.0</span>
+        </div>
+        <div class="legend-shapes">
+            <span><span style="color: var(--path-found);">━</span> activation path</span>
+            <span><span style="color: var(--path-optimal);">╌╌</span> easiest path</span>
+        </div>
+        <div class="legend-shapes" style="margin-top: 4px;">
+            <span>Bright/thick edge = carrying activation &middot; hover an edge for its weight</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    let networkData = null;
+    let simData = null;
+    let goal = null;
+    let lesions = new Set();
+    let currentStep = 0;
+    let isPlaying = false;
+    let playInterval = null;
+    let adjacency = {};     // node -> [{target, weight}]
+    let edgeWeight = {};    // "a|b" -> affordance (both directions)
+
+    const svg = d3.select("#canvas");
+    let g;
+    let zoomBehavior;
+
+    const edgeFlowColor = d3.interpolateRgb("#374151", "#34d399");
+    const activationColor = d3.scaleSequential()
+        .domain([-0.2, 1.0])
+        .interpolator(t => {
+            if (t < 0.167) {
+                return d3.interpolateRgb("#ef4444", "#4b5563")(t / 0.167);
+            }
+            return d3.interpolateRgb("#4b5563", "#22c55e")((t - 0.167) / 0.833);
+        });
+
+    const PARAM_IDS = ['width', 'depth', 'connP', 'seed', 'wMean', 'wSd', 'wLo', 'wHi',
+        'exc', 'inh', 'dec', 'steps', 'rectify'];
+
+    function applyParamsFromURL() {
+        const q = new URLSearchParams(location.search);
+        PARAM_IDS.forEach(id => {
+            if (q.has(id)) document.getElementById(id).value = q.get(id);
+        });
+        if (q.get('goal')) goal = q.get('goal');
+        if (q.get('lesions')) lesions = new Set(q.get('lesions').split(',').filter(Boolean));
+        return q.has('goal');
+    }
+
+    function syncURL() {
+        const q = new URLSearchParams();
+        PARAM_IDS.forEach(id => q.set(id, document.getElementById(id).value));
+        if (goal) q.set('goal', goal);
+        if (lesions.size) q.set('lesions', [...lesions].join(','));
+        history.replaceState(null, '', `${location.pathname}?${q}`);
+    }
+
+    async function shareLink() {
+        syncURL();
+        try {
+            await navigator.clipboard.writeText(location.href);
+            updateStatus('ready', 'Share link copied to clipboard');
+        } catch (e) {
+            prompt('Copy this link:', location.href);
+        }
+    }
+
+    function getNetworkParams() {
+        return {
+            width: parseInt(document.getElementById('width').value),
+            depth: parseInt(document.getElementById('depth').value),
+            connP: parseFloat(document.getElementById('connP').value),
+            seed: parseInt(document.getElementById('seed').value),
+            wMean: parseFloat(document.getElementById('wMean').value),
+            wSd: parseFloat(document.getElementById('wSd').value),
+            wLo: parseFloat(document.getElementById('wLo').value),
+            wHi: parseFloat(document.getElementById('wHi').value),
+            excitatory: parseFloat(document.getElementById('exc').value),
+            inhibitory: parseFloat(document.getElementById('inh').value),
+            decay: parseFloat(document.getElementById('dec').value),
+            rectify: document.getElementById('rectify').value === 'true',
+            steps: parseInt(document.getElementById('steps').value),
+            lesions: [...lesions],
+        };
+    }
+
+    async function generateNetwork(clearSelection, thenRun = false) {
+        updateStatus('running', 'Generating network...');
+        try {
+            const res = await fetch('/pathfind-mlp-network', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ params: getNetworkParams() })
+            });
+            networkData = await res.json();
+            if (networkData.error) throw new Error(networkData.error);
+
+            adjacency = {};
+            edgeWeight = {};
+            networkData.nodes.forEach(n => adjacency[n] = []);
+            networkData.connections.forEach(c => {
+                adjacency[c.source].push({ target: c.target, weight: c.weight });
+                adjacency[c.target].push({ target: c.source, weight: c.weight });
+                edgeWeight[`${c.source}|${c.target}`] = c.weight;
+                edgeWeight[`${c.target}|${c.source}`] = c.weight;
+            });
+
+            if (clearSelection) { goal = null; lesions = new Set(); }
+            if (goal && !networkData.nodes.includes(goal)) goal = null;
+            lesions = new Set([...lesions].filter(n => networkData.nodes.includes(n) && n !== networkData.root));
+            if (goal && lesions.has(goal)) goal = null;
+            simData = null;
+            currentStep = 0;
+            document.getElementById('scrubber').max = 0;
+            document.getElementById('stepLabel').textContent = '0 / 0';
+            document.getElementById('pathResult').textContent = 'Run a simulation to analyze.';
+
+            renderNetwork();
+            updateSelectionUI();
+            syncURL();
+            updateStatus('ready', `${networkData.nodes.length} states, ${networkData.connections.length} actions`);
+            if (thenRun && goal) runSimulation();
+        } catch (e) {
+            console.error(e);
+            updateStatus('error', 'Failed to generate network — is the server running?');
+        }
+    }
+
+    function setupZoom() {
+        zoomBehavior = d3.zoom()
+            .scaleExtent([0.3, 3])
+            .on("zoom", (event) => g.attr("transform", event.transform));
+        svg.call(zoomBehavior);
+        g = svg.append("g");
+    }
+
+    function resetView() {
+        svg.transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    function setupLegendGradient() {
+        document.getElementById('legendGradient').style.background =
+            'linear-gradient(to right, #ef4444 0%, #4b5563 17%, #22c55e 100%)';
+    }
+
+    // Fixed layered layout: root at the bottom, top layer (goal candidates) at the top.
+    function layoutPositions(width, height) {
+        const layers = networkData.layers;
+        const marginY = 70, marginX = 110;
+        const usableH = height - 2 * marginY;
+        const pos = {};
+        layers.forEach((layer, l) => {
+            const y = height - marginY - (layers.length === 1 ? 0 : l * usableH / (layers.length - 1));
+            layer.forEach((name, i) => {
+                const x = marginX + (layer.length === 1
+                    ? (width - 2 * marginX) / 2
+                    : i * (width - 2 * marginX) / (layer.length - 1));
+                pos[name] = { x, y };
+            });
+        });
+        return pos;
+    }
+
+    let nodePos = {};
+    let overlayG = null;
+
+    function renderNetwork() {
+        if (!networkData) return;
+
+        const container = document.getElementById('viz-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        svg.attr("width", width).attr("height", height);
+        g.selectAll("*").remove();
+
+        nodePos = layoutPositions(width, height);
+
+        networkData.layers.forEach((layer, l) => {
+            g.append("text")
+                .attr("class", "layer-label")
+                .attr("x", 88)
+                .attr("y", nodePos[layer[0]].y + 4)
+                .text(l === 0 ? 'current' : (l === networkData.layers.length - 1 ? 'goals' : `layer ${l}`));
+        });
+
+        g.append("g").selectAll("line")
+            .data(networkData.connections)
+            .enter().append("line")
+            .attr("class", "connection")
+            .attr("id", (d, i) => `edge-${i}`)
+            .attr("data-source", d => d.source)
+            .attr("data-target", d => d.target)
+            .attr("x1", d => nodePos[d.source].x).attr("y1", d => nodePos[d.source].y)
+            .attr("x2", d => nodePos[d.target].x).attr("y2", d => nodePos[d.target].y)
+            .attr("stroke", "#4b5563")
+            .attr("stroke-opacity", 0.45)
+            .attr("stroke-width", 1.6);
+
+        g.append("g").selectAll("line")
+            .data(networkData.connections)
+            .enter().append("line")
+            .attr("class", "edge-hit")
+            .attr("data-idx", (d, i) => i)
+            .attr("x1", d => nodePos[d.source].x).attr("y1", d => nodePos[d.source].y)
+            .attr("x2", d => nodePos[d.target].x).attr("y2", d => nodePos[d.target].y)
+            .on("mouseenter", (event, d) => handleEdgeHover(event, d, true))
+            .on("mousemove", (event) => positionEdgeTooltip(event))
+            .on("mouseleave", (event, d) => handleEdgeHover(event, d, false));
+
+        overlayG = g.append("g");
+
+        const nodeSel = g.append("g").selectAll("g")
+            .data(networkData.nodes)
+            .enter().append("g")
+            .attr("transform", name => `translate(${nodePos[name].x},${nodePos[name].y})`);
+
+        nodeSel.append("circle")
+            .attr("r", name => name === networkData.root ? 19 : 15)
+            .attr("class", "node-shape")
+            .attr("id", name => `node-${name}`)
+            .attr("fill", "#4b5563")
+            .on("click", (event, name) => {
+                event.stopPropagation();
+                if (event.shiftKey) toggleLesion(name);
+                else setGoal(name);
+            })
+            .on("mouseenter", (event, name) => handleHover(event, name, true))
+            .on("mouseleave", (event, name) => handleHover(event, name, false));
+
+        nodeSel.append("text")
+            .attr("class", "node-label")
+            .attr("y", 29)
+            .text(name => name);
+
+        refreshMarks();
+    }
+
+    function setGoal(name) {
+        if (name === networkData.root) return;
+        if (!networkData.top_layer.includes(name)) {
+            updateStatus('error', 'Goal must be a top-layer node (or shift-click to lesion)');
+            return;
+        }
+        if (lesions.has(name)) {
+            updateStatus('error', 'That node is lesioned — shift-click to restore it first');
+            return;
+        }
+        goal = (goal === name) ? null : name;
+        invalidateSim();
+        refreshMarks();
+        updateSelectionUI();
+        syncURL();
+    }
+
+    function toggleLesion(name) {
+        if (name === networkData.root) {
+            updateStatus('error', 'Cannot lesion the current state');
+            return;
+        }
+        if (lesions.has(name)) lesions.delete(name);
+        else {
+            lesions.add(name);
+            if (goal === name) goal = null;
+        }
+        invalidateSim();
+        refreshMarks();
+        updateSelectionUI();
+        syncURL();
+    }
+
+    function clearLesions() {
+        lesions = new Set();
+        invalidateSim();
+        refreshMarks();
+        updateSelectionUI();
+        syncURL();
+    }
+
+    function invalidateSim() {
+        simData = null;
+        currentStep = 0;
+        document.getElementById('scrubber').max = 0;
+        document.getElementById('stepLabel').textContent = '0 / 0';
+        document.getElementById('pathResult').textContent = 'Run a simulation to analyze.';
+        if (overlayG) overlayG.selectAll('*').remove();
+        d3.selectAll('.connection').attr('stroke', '#4b5563')
+            .attr('stroke-opacity', 0.45).attr('stroke-width', 1.6);
+        d3.selectAll('.node-shape').attr('fill', '#4b5563');
+    }
+
+    function refreshMarks() {
+        d3.selectAll('.node-shape')
+            .classed('clamped-source', false)
+            .classed('clamped-target', false)
+            .classed('lesioned', false);
+        d3.selectAll('.lesion-x').remove();
+        d3.select(`#node-${networkData.root}`).classed('clamped-source', true);
+        if (goal) d3.select(`#node-${goal}`).classed('clamped-target', true);
+        lesions.forEach(name => {
+            d3.select(`#node-${name}`).classed('lesioned', true);
+            const p = nodePos[name];
+            if (p) {
+                g.append("line").attr("class", "lesion-x")
+                    .attr("x1", p.x - 9).attr("y1", p.y - 9).attr("x2", p.x + 9).attr("y2", p.y + 9);
+                g.append("line").attr("class", "lesion-x")
+                    .attr("x1", p.x - 9).attr("y1", p.y + 9).attr("x2", p.x + 9).attr("y2", p.y - 9);
+            }
+        });
+        d3.selectAll('.connection').classed('lesioned-edge', function () {
+            const el = d3.select(this);
+            return lesions.has(el.attr('data-source')) || lesions.has(el.attr('data-target'));
+        });
+    }
+
+    function updateSelectionUI() {
+        const goalEl = document.getElementById('goalList');
+        goalEl.innerHTML =
+            `<span class="endpoint-tag source">${networkData ? networkData.root : '—'} (current)</span> &rarr; ` +
+            (goal ? `<span class="endpoint-tag target">${goal} (goal)</span>`
+                  : '<span style="color: var(--text-dim);">click a top node</span>');
+        const lesionEl = document.getElementById('lesionList');
+        const btn = document.getElementById('clearLesionsBtn');
+        if (lesions.size) {
+            lesionEl.innerHTML = 'Lesioned: ' + [...lesions].sort().map(n =>
+                `<span class="endpoint-tag lesioned">${n}</span>`).join('');
+            btn.style.display = 'block';
+        } else {
+            lesionEl.innerHTML = '';
+            btn.style.display = 'none';
+        }
+    }
+
+    function handleEdgeHover(event, d, entering) {
+        const tooltip = document.getElementById('edge-tooltip');
+        const edge = d3.select(`#edge-${event.currentTarget.getAttribute('data-idx')}`);
+        if (entering) {
+            let extra = '';
+            if (simData) {
+                const acts = simData.history[currentStep];
+                const s = acts[simData.idx_lookup[d.source]];
+                const t = acts[simData.idx_lookup[d.target]];
+                extra = `<div class="edge-tip-row">activation: ${s.toFixed(3)} &harr; ${t.toFixed(3)}</div>`;
+            }
+            tooltip.innerHTML =
+                `<div class="tooltip-header">${d.source} &harr; ${d.target}</div>` +
+                `<div class="edge-tip-row">affordance: <span>${d.weight.toFixed(3)}</span></div>` + extra;
+            tooltip.classList.add('visible');
+            positionEdgeTooltip(event);
+            edge.classed('highlighted', true);
+        } else {
+            tooltip.classList.remove('visible');
+            edge.classed('highlighted', false);
+        }
+    }
+
+    function positionEdgeTooltip(event) {
+        const tooltip = document.getElementById('edge-tooltip');
+        const container = document.getElementById('viz-container').getBoundingClientRect();
+        tooltip.style.left = (event.clientX - container.left + 14) + 'px';
+        tooltip.style.top = (event.clientY - container.top + 12) + 'px';
+    }
+
+    function handleHover(event, name, entering) {
+        const tooltip = document.getElementById('tooltip');
+        if (entering) {
+            const layer = networkData.node_layer[name];
+            document.getElementById('tooltip-name').textContent =
+                `${name} (layer ${layer}${name === networkData.root ? ' — current state' : ''}${lesions.has(name) ? ' — LESIONED' : ''})`;
+            let activation = 0;
+            if (simData) activation = simData.history[currentStep][simData.idx_lookup[name]];
+            document.getElementById('tooltip-activation').textContent = activation.toFixed(4);
+
+            const conns = adjacency[name] || [];
+            document.getElementById('tooltip-connections-list').innerHTML = conns.length
+                ? conns.map(c => `<span class="tooltip-connection-item">${c.target} (${c.weight.toFixed(3)})</span>`).join('')
+                : '<span style="color: #64748b;">None</span>';
+
+            const rect = event.target.getBoundingClientRect();
+            const container = document.getElementById('viz-container').getBoundingClientRect();
+            tooltip.style.left = (rect.right - container.left + 10) + 'px';
+            tooltip.style.top = (rect.top - container.top) + 'px';
+            tooltip.classList.add('visible');
+
+            d3.selectAll('.connection').classed('dimmed', true);
+            d3.selectAll('.node-shape').classed('dimmed', true);
+            d3.select(`#node-${name}`).classed('dimmed', false);
+            conns.forEach(c => d3.select(`#node-${c.target}`).classed('dimmed', false));
+            d3.selectAll('.connection').each(function () {
+                const el = d3.select(this);
+                if (el.attr('data-source') === name || el.attr('data-target') === name) {
+                    el.classed('dimmed', false).classed('highlighted', true);
+                }
+            });
+        } else {
+            tooltip.classList.remove('visible');
+            d3.selectAll('.connection').classed('dimmed', false).classed('highlighted', false);
+            d3.selectAll('.node-shape').classed('dimmed', false);
+        }
+    }
+
+    async function runSimulation() {
+        if (!goal) {
+            updateStatus('error', 'Set a goal first — click a top-layer node');
+            return;
+        }
+        const btn = document.getElementById('runBtn');
+        btn.disabled = true;
+        btn.textContent = 'RUNNING...';
+        updateStatus('running', 'Running simulation (Python backend)...');
+
+        try {
+            const res = await fetch('/pathfind-mlp-run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ params: getNetworkParams(), goal })
+            });
+            simData = await res.json();
+            if (simData.error) throw new Error(simData.error);
+
+            const scrubber = document.getElementById('scrubber');
+            scrubber.max = simData.history.length - 1;
+            updateStep(simData.history.length - 1);
+            syncURL();
+            updateStatus('ready', `Simulation complete — ${simData.history.length} steps, outcome: ${simData.analysis.outcome}`);
+        } catch (e) {
+            console.error(e);
+            simData = null;
+            updateStatus('error', 'Simulation failed — is the server running?');
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'RUN SIMULATION';
+    }
+
+    // JS mirror of the Python greedy connected ascent, so the scrubber can
+    // show the plan at any time step, not just the settled state.
+    function greedyPathAt(acts) {
+        const idx = simData.idx_lookup;
+        const path = [networkData.root];
+        for (let l = 1; l < networkData.layers.length; l++) {
+            const cur = path[path.length - 1];
+            const cands = networkData.layers[l].filter(n =>
+                !lesions.has(n) && edgeWeight[`${cur}|${n}`] !== undefined);
+            if (!cands.length) return { path, dead: true };
+            cands.sort((a, b) => acts[idx[b]] - acts[idx[a]]);
+            path.push(cands[0]);
+        }
+        return { path, dead: false };
+    }
+
+    function pathMean(path) {
+        if (path.length < 2) return null;
+        let s = 0;
+        for (let i = 0; i < path.length - 1; i++) s += edgeWeight[`${path[i]}|${path[i + 1]}`];
+        return s / (path.length - 1);
+    }
+
+    function drawOverlay(path, cls) {
+        const pts = path.map(n => nodePos[n]).filter(Boolean);
+        if (pts.length < 2) return;
+        overlayG.append('path')
+            .attr('class', `path-overlay ${cls}`)
+            .attr('d', d3.line().x(p => p.x).y(p => p.y)(pts));
+    }
+
+    function analyzePath(step) {
+        const el = document.getElementById('pathResult');
+        if (overlayG) overlayG.selectAll('*').remove();
+
+        if (!simData || !goal) {
+            el.textContent = 'Run a simulation to analyze.';
+            return;
+        }
+
+        const a = simData.analysis;
+        const acts = simData.history[step];
+        const { path, dead } = greedyPathAt(acts);
+        const fMean = pathMean(path);
+
+        let outcome;
+        if (!a.reachable) outcome = 'unreachable';
+        else if (dead) outcome = 'dead_end';
+        else if (path[path.length - 1] !== goal) outcome = 'wrong_top';
+        else outcome = 'success';
+
+        let html = '';
+        if (!a.reachable) {
+            html += `<span class="notfound">UNREACHABLE</span> — no structural path from ${networkData.root} to ${goal} exists.<br>`;
+        } else {
+            html += `Reachable — <span class="metric">${a.path_count}</span> possible path${a.path_count === 1 ? '' : 's'}, easiest mean affordance <span class="metric">${a.optimal_mean.toFixed(3)}</span>.<br>`;
+        }
+
+        if (outcome === 'dead_end') {
+            html += `<span class="notfound">DEAD END</span> at layer ${path.length - 1} — greedy ascent hit a node with no upward connections.<br>`;
+        } else if (outcome === 'wrong_top') {
+            html += `<span class="warn">WRONG TOP</span> — activation climbed to ${path[path.length - 1]}, not the goal.<br>`;
+        } else if (outcome === 'success') {
+            const eff = Math.min(1, fMean / a.optimal_mean);
+            html += `<span class="found">SUCCESS</span> — activation path reaches the goal.<br>`;
+            html += `Efficiency: <span class="metric">${(eff * 100).toFixed(1)}%</span> (found ${fMean.toFixed(3)} / easiest ${a.optimal_mean.toFixed(3)})`;
+            html += `<div class="eff-bar"><div style="width: ${(eff * 100).toFixed(1)}%"></div></div>`;
+        }
+
+        html += `<span class="path-chain">${path.join(' → ')}</span>`;
+        if (a.optimal_path && outcome !== 'success') {
+            html += `<br>easiest: <span class="opt-chain">${a.optimal_path.join(' → ')}</span>`;
+        }
+        html += `<br><span style="font-size: 0.75rem;">argmax chain ${a.argmax_match && step === simData.history.length - 1 ? 'matches' : 'coherence ' + (a.argmax_coherence * 100).toFixed(0) + '% (final step)'}</span>`;
+
+        if (document.getElementById('showFound').checked) drawOverlay(path, 'found');
+        if (document.getElementById('showOptimal').checked && a.optimal_path) drawOverlay(a.optimal_path, 'optimal');
+
+        el.innerHTML = html;
+    }
+
+    function updateStep(step) {
+        if (!simData) return;
+        step = Math.max(0, Math.min(step, simData.history.length - 1));
+        currentStep = step;
+
+        document.getElementById('scrubber').value = step;
+        document.getElementById('stepLabel').textContent = `${step} / ${simData.history.length - 1}`;
+
+        const acts = simData.history[step];
+        networkData.nodes.forEach(name => {
+            d3.select(`#node-${name}`).attr("fill", activationColor(acts[simData.idx_lookup[name]]));
+        });
+
+        // Both endpoints active = edge carrying activation: bright, thick,
+        // green. Quiet edges fade to a faint grey so the corridor stands out.
+        d3.selectAll('.connection').each(function () {
+            const el = d3.select(this);
+            const s = Math.max(0, acts[simData.idx_lookup[el.attr('data-source')]]);
+            const t = Math.max(0, acts[simData.idx_lookup[el.attr('data-target')]]);
+            const flow = Math.min(1, (s + t) / 2);
+            el.attr('stroke', edgeFlowColor(flow))
+                .attr('stroke-opacity', 0.12 + 0.88 * flow)
+                .attr('stroke-width', 1.6 + 2.8 * flow);
+        });
+
+        analyzePath(step);
+        refreshMarks();
+    }
+
+    function playbackStep(delta) { updateStep(currentStep + delta); }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('playBtn');
+        if (isPlaying) {
+            btn.textContent = 'Pause';
+            playInterval = setInterval(() => {
+                if (!simData) return;
+                if (currentStep >= simData.history.length - 1) currentStep = -1;
+                updateStep(currentStep + 1);
+            }, 50);
+        } else {
+            btn.textContent = 'Play';
+            clearInterval(playInterval);
+        }
+    }
+
+    function updateStatus(type, message) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = message;
+    }
+
+    window.addEventListener('resize', () => {
+        if (networkData) {
+            renderNetwork();
+            if (simData) updateStep(currentStep);
+        }
+    });
+
+    setupZoom();
+    setupLegendGradient();
+    const autorun = applyParamsFromURL();
+    generateNetwork(false, autorun);
+</script>
+
+<script src="/nav.js"></script>
+</body>
+</html>

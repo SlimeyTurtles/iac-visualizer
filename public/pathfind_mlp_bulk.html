@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLP Pathfinding — Bulk Seed Metrics</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        /* Same lime accent as the interactive MLP pathfinding page */
+        :root {
+            --accent: #84cc16;
+            --accent-dark: #65a30d;
+            --accent-glow: rgba(132, 204, 22, 0.2);
+            --accent-soft: #a3e635;
+            --sidebar-width: 336px;
+        }
+
+        #sidebar { gap: 14px; }
+        #sidebar h2 { margin: 0 0 4px 0; font-size: 1.4rem; }
+
+        .panel-section {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+        }
+        .panel-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .param-row { display: flex; gap: 8px; }
+        .param-row .param-group { flex: 1; }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-card-2);
+            border: 1px solid var(--border-mid);
+            border-radius: var(--radius-md);
+            color: var(--text-default);
+            font-size: 0.85rem;
+        }
+        select:focus { outline: none; border-color: var(--accent); }
+
+        #runBtn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            border: none;
+            border-radius: var(--radius-lg);
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #runBtn:hover { background: linear-gradient(135deg, #059669, #047857); }
+        #runBtn:disabled { background: #374151; cursor: not-allowed; }
+
+        /* Main area is a scrollable dashboard, not an svg canvas */
+        #viz-container { overflow-y: auto; padding: 24px; }
+        .dashboard { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+        .metric-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-lg);
+            padding: 14px 16px;
+        }
+        .metric-card .value { font-size: 1.6rem; font-weight: 700; color: var(--text-strong); }
+        .metric-card .value.good { color: var(--success); }
+        .metric-card .value.bad { color: var(--danger); }
+        .metric-card .value.warn { color: var(--warning); }
+        .metric-card .label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+        .metric-card .sub { font-size: 0.7rem; color: var(--text-dim); margin-top: 4px; }
+
+        .chart-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+        }
+        .chart-panel h4 { margin: 0 0 8px 0; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+
+        .table-controls { display: flex; gap: 10px; align-items: center; }
+        .table-controls select { width: auto; }
+        .table-controls .count { font-size: 0.8rem; color: var(--text-muted); }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        th {
+            text-align: left;
+            padding: 8px 10px;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border-mid);
+            cursor: pointer;
+            user-select: none;
+        }
+        th:hover { color: var(--accent-soft); }
+        td { padding: 7px 10px; border-bottom: 1px solid var(--border-soft); color: var(--text-default); }
+        tbody tr { cursor: pointer; transition: background 0.1s; }
+        tbody tr:hover { background: var(--bg-card); }
+        td.mono { font-family: monospace; font-size: 0.78rem; }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: var(--radius-sm);
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .badge.success { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+        .badge.unreachable { background: rgba(100, 116, 139, 0.2); color: var(--text-muted); }
+        .badge.dead_end { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+        .badge.wrong_top { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+
+        .eff-cell { display: flex; align-items: center; gap: 8px; }
+        .eff-cell .bar { width: 60px; height: 6px; background: var(--bg-card-2); border-radius: 3px; overflow: hidden; }
+        .eff-cell .bar > div { height: 100%; background: linear-gradient(90deg, var(--warning), var(--success)); }
+
+        .empty-note { color: var(--text-dim); font-size: 0.85rem; padding: 30px; text-align: center; }
+        .axis text { fill: var(--text-muted); font-size: 10px; }
+        .axis path, .axis line { stroke: var(--border-mid); }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div style="display: flex; gap: 16px; margin-bottom: 4px;">
+        <a href="/" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">&larr; Home</a>
+        <a href="/pathfind_mlp.html" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">Interactive &rarr;</a>
+    </div>
+    <h2>MLP Pathfinding — Bulk</h2>
+    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+        Run the layered planner over a range of seeds and measure how often IAC
+        activation finds a path to the goal &mdash; and how close it comes to the
+        easiest possible path (efficiency = found mean affordance / optimal).
+        Click any row to open that seed in the interactive page.
+    </p>
+
+    <div class="panel-section">
+        <h4>Network</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Width</label>
+                <input type="number" id="width" value="6" min="2" max="20">
+            </div>
+            <div class="param-group">
+                <label>Depth (layers)</label>
+                <input type="number" id="depth" value="5" min="3" max="12">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Connection Prob</label>
+                <input type="number" id="connP" value="0.35" step="any" data-arrow-step="0.05" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Goal Pick</label>
+                <select id="goalMode">
+                    <option value="random">Random top node</option>
+                    <option value="1">Fixed: 1st top node</option>
+                </select>
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Weight Mean</label>
+                <input type="number" id="wMean" value="0.5" step="any" data-arrow-step="0.05">
+            </div>
+            <div class="param-group">
+                <label>Weight SD</label>
+                <input type="number" id="wSd" value="0.25" step="any" data-arrow-step="0.05" min="0">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Clip Low</label>
+                <input type="number" id="wLo" value="0" step="any" data-arrow-step="0.05">
+            </div>
+            <div class="param-group">
+                <label>Clip High</label>
+                <input type="number" id="wHi" value="1" step="any" data-arrow-step="0.05">
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Dynamics</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Excitatory</label>
+                <input type="number" id="exc" value="0.1" step="any" data-arrow-step="0.01" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Inhibitory</label>
+                <input type="number" id="inh" value="-0.05" step="any" data-arrow-step="0.01" min="-1" max="0">
+            </div>
+        </div>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Decay</label>
+                <input type="number" id="dec" value="0.05" step="any" data-arrow-step="0.01" min="0" max="1">
+            </div>
+            <div class="param-group">
+                <label>Steps</label>
+                <input type="number" id="steps" value="200" min="1" max="1000">
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Sweep</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Seed Start</label>
+                <input type="number" id="seedStart" value="0" min="0">
+            </div>
+            <div class="param-group">
+                <label>Seed Count</label>
+                <input type="number" id="seedCount" value="200" min="1" max="2000">
+            </div>
+        </div>
+    </div>
+
+    <button id="runBtn" onclick="runSweep()">RUN SWEEP</button>
+
+    <div id="status" class="status">Set parameters and run a sweep.</div>
+</div>
+
+<div id="viz-container">
+    <div class="dashboard">
+        <div class="cards" id="cards"></div>
+
+        <div class="chart-panel">
+            <h4>Efficiency Distribution (successes)</h4>
+            <svg id="histogram" width="100%" height="180"></svg>
+        </div>
+
+        <div class="chart-panel">
+            <div class="table-controls" style="margin-bottom: 10px;">
+                <h4 style="margin: 0; flex: 1;">Per-Seed Results</h4>
+                <span class="count" id="rowCount"></span>
+                <select id="outcomeFilter" onchange="renderTable()">
+                    <option value="all">All outcomes</option>
+                    <option value="success">Success</option>
+                    <option value="unreachable">Unreachable</option>
+                    <option value="dead_end">Dead end</option>
+                    <option value="wrong_top">Wrong top</option>
+                    <option value="perfect">Perfectly easiest</option>
+                </select>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th onclick="sortBy('seed')">Seed</th>
+                        <th onclick="sortBy('goal')">Goal</th>
+                        <th onclick="sortBy('outcome')">Outcome</th>
+                        <th onclick="sortBy('efficiency')">Efficiency</th>
+                        <th onclick="sortBy('found_mean')">Found μw</th>
+                        <th onclick="sortBy('optimal_mean')">Easiest μw</th>
+                        <th onclick="sortBy('path_count')"># Paths</th>
+                        <th onclick="sortBy('argmax_match')">Argmax=Path</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="8" class="empty-note">Run a sweep to populate.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    let rows = [];
+    let sortKey = 'seed';
+    let sortAsc = true;
+
+    const PARAM_IDS = ['width', 'depth', 'connP', 'wMean', 'wSd', 'wLo', 'wHi',
+        'exc', 'inh', 'dec', 'steps', 'goalMode', 'seedStart', 'seedCount'];
+
+    function applyParamsFromURL() {
+        const q = new URLSearchParams(location.search);
+        PARAM_IDS.forEach(id => {
+            if (q.has(id)) document.getElementById(id).value = q.get(id);
+        });
+    }
+
+    function syncURL() {
+        const q = new URLSearchParams();
+        PARAM_IDS.forEach(id => q.set(id, document.getElementById(id).value));
+        history.replaceState(null, '', `${location.pathname}?${q}`);
+    }
+
+    function getParams() {
+        return {
+            width: parseInt(document.getElementById('width').value),
+            depth: parseInt(document.getElementById('depth').value),
+            connP: parseFloat(document.getElementById('connP').value),
+            seed: 0,
+            wMean: parseFloat(document.getElementById('wMean').value),
+            wSd: parseFloat(document.getElementById('wSd').value),
+            wLo: parseFloat(document.getElementById('wLo').value),
+            wHi: parseFloat(document.getElementById('wHi').value),
+            excitatory: parseFloat(document.getElementById('exc').value),
+            inhibitory: parseFloat(document.getElementById('inh').value),
+            decay: parseFloat(document.getElementById('dec').value),
+            steps: parseInt(document.getElementById('steps').value),
+            goalMode: document.getElementById('goalMode').value,
+        };
+    }
+
+    async function runSweep() {
+        const btn = document.getElementById('runBtn');
+        btn.disabled = true;
+        btn.textContent = 'SWEEPING...';
+        const count = parseInt(document.getElementById('seedCount').value);
+        updateStatus('running', `Sweeping ${count} seeds (Python backend)...`);
+
+        try {
+            const res = await fetch('/pathfind-mlp-sweep', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    params: getParams(),
+                    sweep: {
+                        seedStart: parseInt(document.getElementById('seedStart').value),
+                        seedCount: count,
+                    }
+                })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            rows = data.rows;
+            syncURL();
+            renderAll();
+            updateStatus('ready', `Sweep complete — ${rows.length} seeds`);
+        } catch (e) {
+            console.error(e);
+            updateStatus('error', 'Sweep failed — is the server running?');
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'RUN SWEEP';
+    }
+
+    function renderAll() {
+        renderCards();
+        renderHistogram();
+        renderTable();
+    }
+
+    function pct(x) { return (x * 100).toFixed(1) + '%'; }
+
+    function renderCards() {
+        const n = rows.length;
+        const by = o => rows.filter(r => r.outcome === o).length;
+        const successes = rows.filter(r => r.outcome === 'success');
+        const reachable = rows.filter(r => r.reachable);
+        const effs = successes.map(r => Math.min(1, r.efficiency));
+        const meanEff = effs.length ? effs.reduce((a, b) => a + b, 0) / effs.length : null;
+        const perfect = effs.filter(e => e >= 0.9999).length;
+        const matches = rows.filter(r => r.argmax_match).length;
+
+        const R = reachable.length;
+        const effSum = effs.reduce((a, b) => a + b, 0);
+        const meanEffAll = n ? effSum / n : null;
+        const meanEffReach = R ? effSum / R : null;
+        const matchesReach = reachable.filter(r => r.argmax_match).length;
+        const pctR = x => R ? pct(x / R) : '—';
+
+        const cards = [
+            { v: n, l: 'Seeds', cls: '', sub: `reachable: ${R}/${n}` },
+            { v: pct(by('unreachable') / n), l: 'Unreachable', cls: '', sub: `${by('unreachable')}/${n} seeds` },
+            { v: R ? pct(successes.length / R) : '—', l: 'Success (of reachable)', cls: 'good',
+              sub: `of all: ${pct(successes.length / n)} (${successes.length}/${n})` },
+            { v: pct(by('dead_end') / n), l: 'Dead End', cls: 'bad',
+              sub: `of reachable: ${pctR(by('dead_end'))} (${by('dead_end')}/${R})` },
+            { v: pct(by('wrong_top') / n), l: 'Wrong Top', cls: 'warn',
+              sub: `of reachable: ${pctR(by('wrong_top'))} (${by('wrong_top')}/${R})` },
+            { v: meanEff !== null ? pct(meanEff) : '—', l: 'Mean Efficiency (successes)', cls: 'good',
+              sub: meanEffAll !== null ? `failures = 0 — all: ${pct(meanEffAll)} · reachable: ${meanEffReach !== null ? pct(meanEffReach) : '—'}` : '' },
+            { v: effs.length ? pct(perfect / effs.length) : '—', l: 'Perfectly Easiest (of successes)', cls: '',
+              sub: `of all: ${pct(perfect / n)} · of reachable: ${pctR(perfect)} (${perfect}/${R})` },
+            { v: pct(matches / n), l: 'Argmax = Path', cls: '',
+              sub: `of reachable: ${pctR(matchesReach)} (${matchesReach}/${R})` },
+        ];
+        document.getElementById('cards').innerHTML = cards.map(c =>
+            `<div class="metric-card"><div class="value ${c.cls}">${c.v}</div><div class="label">${c.l}</div>${c.sub ? `<div class="sub">${c.sub}</div>` : ''}</div>`
+        ).join('');
+    }
+
+    function renderHistogram() {
+        const svg = d3.select('#histogram');
+        svg.selectAll('*').remove();
+        const effs = rows.filter(r => r.efficiency !== null).map(r => Math.min(1, r.efficiency));
+        const width = svg.node().clientWidth || 800;
+        const height = 180;
+        const margin = { top: 10, right: 16, bottom: 26, left: 40 };
+
+        if (!effs.length) {
+            svg.append('text').attr('x', width / 2).attr('y', height / 2)
+                .attr('text-anchor', 'middle').attr('fill', 'var(--text-dim)')
+                .style('font-size', '0.85rem').text('No successful seeds yet.');
+            return;
+        }
+
+        const x = d3.scaleLinear().domain([0.5, 1.0]).range([margin.left, width - margin.right]);
+        const bins = d3.bin().domain(x.domain()).thresholds(25)(effs);
+        const y = d3.scaleLinear().domain([0, d3.max(bins, b => b.length)]).nice()
+            .range([height - margin.bottom, margin.top]);
+
+        svg.append('g').selectAll('rect').data(bins).enter().append('rect')
+            .attr('x', b => x(b.x0) + 1)
+            .attr('width', b => Math.max(1, x(b.x1) - x(b.x0) - 2))
+            .attr('y', b => y(b.length))
+            .attr('height', b => y(0) - y(b.length))
+            .attr('fill', 'var(--accent)')
+            .attr('opacity', 0.85);
+
+        svg.append('g').attr('class', 'axis')
+            .attr('transform', `translate(0,${height - margin.bottom})`)
+            .call(d3.axisBottom(x).ticks(6, '.0%'));
+        svg.append('g').attr('class', 'axis')
+            .attr('transform', `translate(${margin.left},0)`)
+            .call(d3.axisLeft(y).ticks(4));
+    }
+
+    function sortBy(key) {
+        if (sortKey === key) sortAsc = !sortAsc;
+        else { sortKey = key; sortAsc = true; }
+        renderTable();
+    }
+
+    function seedLink(r) {
+        const p = getParams();
+        const q = new URLSearchParams({
+            width: p.width, depth: p.depth, connP: p.connP, seed: r.seed,
+            wMean: p.wMean, wSd: p.wSd, wLo: p.wLo, wHi: p.wHi,
+            exc: p.excitatory, inh: p.inhibitory, dec: p.decay,
+            steps: p.steps, rectify: 'true', goal: r.goal,
+        });
+        return `/pathfind_mlp.html?${q}`;
+    }
+
+    function renderTable() {
+        const filter = document.getElementById('outcomeFilter').value;
+        let view = filter === 'all' ? [...rows]
+            : filter === 'perfect' ? rows.filter(r => r.efficiency !== null && Math.min(1, r.efficiency) >= 0.9999)
+            : rows.filter(r => r.outcome === filter);
+        view.sort((a, b) => {
+            let va = a[sortKey], vb = b[sortKey];
+            if (va === null || va === undefined) va = -Infinity;
+            if (vb === null || vb === undefined) vb = -Infinity;
+            if (va < vb) return sortAsc ? -1 : 1;
+            if (va > vb) return sortAsc ? 1 : -1;
+            return 0;
+        });
+        document.getElementById('rowCount').textContent = `${view.length} of ${rows.length}`;
+
+        const body = document.getElementById('tableBody');
+        if (!view.length) {
+            body.innerHTML = '<tr><td colspan="8" class="empty-note">No seeds match this filter.</td></tr>';
+            return;
+        }
+        body.innerHTML = view.map(r => {
+            const eff = r.efficiency !== null ? Math.min(1, r.efficiency) : null;
+            const effCell = eff !== null
+                ? `<div class="eff-cell"><div class="bar"><div style="width:${(eff * 100).toFixed(0)}%"></div></div>${(eff * 100).toFixed(1)}%</div>`
+                : '—';
+            return `<tr onclick="window.open('${seedLink(r)}', '_blank')">
+                <td class="mono">${r.seed}</td>
+                <td class="mono">${r.goal}</td>
+                <td><span class="badge ${r.outcome}">${r.outcome.replace('_', ' ')}</span></td>
+                <td>${effCell}</td>
+                <td class="mono">${r.found_mean !== null ? r.found_mean.toFixed(3) : '—'}</td>
+                <td class="mono">${r.optimal_mean !== null ? r.optimal_mean.toFixed(3) : '—'}</td>
+                <td class="mono">${r.path_count}</td>
+                <td>${r.argmax_match ? '<span style="color: var(--success);">yes</span>' : '<span style="color: var(--text-dim);">no</span>'}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function updateStatus(type, message) {
+        const el = document.getElementById('status');
+        el.className = `status ${type}`;
+        el.textContent = message;
+    }
+
+    applyParamsFromURL();
+</script>
+
+<script src="/nav.js"></script>
+</body>
+</html>
