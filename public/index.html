@@ -112,6 +112,11 @@
         .pathart { --accent: #f97316; }
         .pathmlp { --accent: #84cc16; }
         .patharith { --accent: #14b8a6; }
+        .artadd  { --accent: #eab308; }
+        .artadddist { --accent: #d946ef; }
+        .artops  { --accent: #10b981; }
+        .artmod  { --accent: #0ea5e9; }
+        .actgraph { --accent: #f43f5e; }
         .rumel   { --accent: #a78bfa; }
         .unsup   { --accent: #f59e0b; }
         .csv     { --accent: #fb7185; }
@@ -174,6 +179,35 @@
         <a href="/pathfind_arith.html" class="model-link patharith new">
             <h3>Arithmetic Pathfinding (Hebbian Lattice) <span class="tag">New</span></h3>
             <p>Every (A, B, C) triple is a state; edges are the arithmetic moves X &plusmn;= Y and X = 0. IAC spreads from clamped current + goal states while slow Hebbian potentiation (with homeostatic synaptic scaling) reshapes the lattice as it practices modulo tasks (A,B,C) &rarr; ((A+B) mod C, 0, 0).</p>
+        </a>
+    </div>
+
+    <span class="section-label">ART Arithmetic</span>
+
+    <div class="card-grid">
+        <a href="/art_addition.html" class="model-link artadd new">
+            <h3>ART Addition (Localist) <span class="tag">New</span></h3>
+            <p>Two localist digit pools (0&ndash;9, one-hot) feed an ART hub layer whose outputs point at sum nodes 0&ndash;20. Train on every pair except those containing an excluded digit (default 4) and test whether recall can extrapolate addition it was never taught.</p>
+        </a>
+
+        <a href="/art_addition_distributed.html" class="model-link artadddist new">
+            <h3>ART Addition (Distributed) <span class="tag">New</span></h3>
+            <p>Same adder, but each digit activates a Gaussian bump over its pool, so 4 overlaps 3 and 5. Nearby hubs vote for nearby sums &mdash; test whether overlap geometry is enough to extrapolate the held-out digit, and how &sigma; and softmax gain shape the answer.</p>
+        </a>
+
+        <a href="/art_arithmetic.html" class="model-link artops new">
+            <h3>ART Arithmetic (Add &amp; Subtract) <span class="tag">New</span></h3>
+            <p>Adds a third localist pool: a two-node operator (+ / &minus;). Hubs recruit over the full (A, op, B) triple and wire to result nodes &minus;9&hellip;18. Trained on all 100 pairs &times; both operators, with per-operator result grids.</p>
+        </a>
+
+        <a href="/art_modulo.html" class="model-link artmod new">
+            <h3>ART Modulo (Recurrent Subtraction) <span class="tag">New</span></h3>
+            <p>The operator pool grows a <strong>done</strong> node and hubs learn state <em>transitions</em>: (Sub, A, B) &rarr; the next subtraction step, until the remainder flags done. Recall feeds back into the input so the network runs the algorithm &mdash; trained on mod 1, 2, 4, 5, with mod 3 never taught.</p>
+        </a>
+
+        <a href="/action_graph.html" class="model-link actgraph new">
+            <h3>Action Graph (Step-Indexed Hebbian) <span class="tag">New</span></h3>
+            <p>Every triple (A, B, C) is a node branching through the same arithmetic actions (X += Y, X &minus;= Y, X &times;D, X &divide;D, X = 0 on any variable). IAC spreads from the clamped current and goal states with decay only, and Hebbian credit lands on the <em>action at step k</em> rather than the state pair &mdash; a value-agnostic action sequence that hardens on the (A + B) mod C curriculum.</p>
         </a>
     </div>
 

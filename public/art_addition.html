@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ART Addition — Two-Number Hubs</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        /* ART addition page uses yellow accent */
+        :root {
+            --accent: #eab308;
+            --accent-dark: #ca8a04;
+            --accent-glow: rgba(234, 179, 8, 0.2);
+            --accent-soft: #facc15;
+            --sidebar-width: 320px;
+        }
+
+        #sidebar { gap: 14px; }
+
+        .panel-section {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+        }
+        .panel-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .param-row { display: flex; gap: 8px; }
+        .param-row .param-group { flex: 1; }
+
+        .action-btn {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: #422006;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .action-btn:hover:not(:disabled) { background: var(--accent-soft); }
+        .action-btn.secondary {
+            background: var(--bg-card-2);
+            color: var(--text-default);
+            border: 1px solid var(--border-mid);
+        }
+        .action-btn.secondary:hover:not(:disabled) { border-color: var(--accent); }
+        .btn-stack { display: flex; flex-direction: column; gap: 8px; }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 12px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 10px;
+        }
+        .stat-grid span { color: var(--text-strong); font-weight: 600; }
+
+        .explainer {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+            font-size: 0.76rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        .explainer h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #main-content {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: var(--bg-app);
+        }
+        #canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+        #canvas:active { cursor: grabbing; }
+
+        /* Floating corner cards (same look as the PCA container on the ART pages) */
+        .float-card {
+            position: absolute;
+            background: var(--bg-panel);
+            padding: 12px 14px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-soft);
+            z-index: 100;
+            transition: all 0.25s ease;
+        }
+        .float-card h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .card-toggle {
+            cursor: pointer;
+            color: var(--accent-soft);
+            font-size: 0.72rem;
+            font-weight: 600;
+            user-select: none;
+        }
+        .card-toggle:hover { color: var(--accent); }
+        #outCard { bottom: 20px; left: 20px; }
+        #evalCard { bottom: 20px; right: 20px; }
+
+        /* Status overlay (top-left) */
+        .outcome-chip {
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.78rem;
+        }
+        .outcome-chip.success { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+        .outcome-chip.fail { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+        .outcome-chip.novel { background: rgba(234, 179, 8, 0.15); color: var(--accent-soft); }
+        #recallInfo { font-size: 0.8rem; color: var(--text-muted); line-height: 1.6; }
+        #recallInfo strong { color: var(--text-strong); }
+        #recallChips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+
+        .pool-label {
+            fill: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+        }
+        .io-digit { font-size: 10px; text-anchor: middle; pointer-events: none; font-weight: 600; }
+        .net-link { fill: none; }
+        #canvas circle.input-node { cursor: pointer; }
+        #evalSvg rect.eval-cell { cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div style="display: flex; gap: 16px; margin-bottom: 4px;">
+        <a href="/" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">&larr; Home</a>
+        <a href="/art_addition_distributed.html" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">Distributed version &rarr;</a>
+    </div>
+    <h2>ART Addition</h2>
+    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+        Two localist pools of digits 0&ndash;9 (one-hot) feed an ART hub layer.
+        When a hub is recruited during training it wires its output to the
+        <strong>sum</strong> node (0&ndash;20). Train on every pair <em>except</em> those
+        containing an excluded digit, then test whether recall can add with the
+        digit it was never taught. Drag / scroll the canvas to pan and zoom.
+    </p>
+
+    <div class="panel-section">
+        <h4>Model</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Vigilance</label>
+                <input type="number" id="vigilance" value="0.95" min="0" max="1" step="any" data-arrow-step="0.01">
+            </div>
+            <div class="param-group">
+                <label>Learning rate</label>
+                <input type="number" id="lr" value="0.2" min="0" max="1" step="any" data-arrow-step="0.05">
+            </div>
+        </div>
+        <div class="param-row" style="margin-top: 8px;">
+            <div class="param-group">
+                <label>Softmax gain</label>
+                <input type="number" id="gain" value="40" min="1" step="any" data-arrow-step="5">
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Training</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Exclude digit (−1 = none)</label>
+                <input type="number" id="excludeDigit" value="4" min="-1" max="9">
+            </div>
+            <div class="param-group">
+                <label>Passes</label>
+                <input type="number" id="passes" value="1" min="1" max="10">
+            </div>
+        </div>
+        <div class="btn-stack" style="margin-top: 10px;">
+            <button class="action-btn" id="trainBtn" onclick="trainModel()">Train</button>
+        </div>
+        <div class="stat-grid">
+            <div>Hubs recruited</div><div><span id="statHubs">0</span></div>
+            <div>Pairs trained</div><div><span id="statPairs">0</span></div>
+            <div>Trained accuracy</div><div><span id="statTrainAcc">–</span></div>
+            <div>Excluded accuracy</div><div><span id="statHoldAcc">–</span></div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Test a Pair</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>A</label>
+                <input type="number" id="testA" value="4" min="0" max="9">
+            </div>
+            <div class="param-group">
+                <label>B</label>
+                <input type="number" id="testB" value="3" min="0" max="9">
+            </div>
+        </div>
+        <div class="btn-stack" style="margin-top: 10px;">
+            <button class="action-btn secondary" onclick="runTest()">Test Recall</button>
+        </div>
+    </div>
+
+    <div class="explainer">
+        <h4>What this tests</h4>
+        <p style="margin: 0 0 8px 0;">
+            With <strong>localist</strong> one-hot inputs, the "4" unit shares zero
+            overlap with any other digit — 3 and 5 are as different from 4 as 9 is.
+            A hub for (5, 3) matches the probe (4, 3) only through the shared "3"
+            unit, and every hub (x, 3) matches it <em>equally</em> well.
+        </p>
+        <p style="margin: 0;">
+            So recall for pairs containing the excluded digit blends the votes of all
+            equally-similar hubs: the output spreads flat over their sums instead of
+            peaking at the right one. Watch the output card when testing (4, 3) —
+            that flatness is the model saying localist codes can't extrapolate
+            arithmetic. Distributed / positional digit codes are the natural next step.
+        </p>
+    </div>
+</div>
+
+<div id="main-content">
+    <svg id="canvas"></svg>
+    <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+
+    <div class="info-card">
+        <h4>Recall <span id="recallLabel" style="color: var(--accent-soft); text-transform: none;"></span></h4>
+        <div id="recallChips"></div>
+        <div id="recallInfo">Train the model to begin.</div>
+    </div>
+
+    <div class="float-card" id="outCard">
+        <h4>Output over sums 0&ndash;20</h4>
+        <svg id="outSvg" width="380" height="130"></svg>
+    </div>
+
+    <div class="float-card" id="evalCard">
+        <h4>All 100 pairs
+            <span class="card-toggle" id="evalToggle" onclick="toggleEvalSize()">expand ⤢</span>
+        </h4>
+        <svg id="evalSvg"></svg>
+        <div id="evalNote" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;"></div>
+    </div>
+</div>
+
+<div class="tooltip" id="tooltip">
+    <div class="tooltip-header" id="tipHead"></div>
+    <div class="tooltip-content" id="tipBody"></div>
+</div>
+
+<script>
+// ---- model ----
+
+class ARTAdditionModel {
+    constructor(vigilance, lr, gain) {
+        this.vigilance = vigilance;
+        this.lr = lr;
+        this.gain = gain;
+        this.templates = [];   // 20-dim (two one-hot pools)
+        this.outW = [];        // 21-dim sum association per hub
+        this.members = [];     // list of "a+b" strings per hub
+    }
+
+    encode(a, b) {
+        const x = new Array(20).fill(0);
+        x[a] = 1;
+        x[10 + b] = 1;
+        return x;
+    }
+
+    // Per-pool normalized Euclidean similarity, averaged over the two pools
+    // (site ART convention: 1 - ||x_p - t_p||^2 / |pool|).
+    similarity(x, t) {
+        let sim = 0;
+        for (const [s, e] of [[0, 10], [10, 20]]) {
+            let d2 = 0;
+            for (let i = s; i < e; i++) { const d = x[i] - t[i]; d2 += d * d; }
+            sim += 1 - d2 / (e - s);
+        }
+        return sim / 2;
+    }
+
+    similarities(x) {
+        return this.templates.map(t => this.similarity(x, t));
+    }
+
+    train(a, b) {
+        const x = this.encode(a, b);
+        const sum = a + b;
+        const sims = this.similarities(x);
+        let best = -1, bestSim = -Infinity;
+        sims.forEach((s, i) => { if (s > bestSim) { bestSim = s; best = i; } });
+
+        if (best < 0 || bestSim < this.vigilance) {
+            this.templates.push([...x]);
+            const w = new Array(21).fill(0);
+            w[sum] = 1;
+            this.outW.push(w);
+            this.members.push([`${a}+${b}`]);
+            return { recruited: true, hub: this.templates.length - 1 };
+        }
+        // Resonance: EWMA template + output toward this exemplar.
+        const t = this.templates[best], w = this.outW[best];
+        for (let i = 0; i < 20; i++) t[i] += this.lr * (x[i] - t[i]);
+        for (let s = 0; s < 21; s++) w[s] += this.lr * ((s === sum ? 1 : 0) - w[s]);
+        if (!this.members[best].includes(`${a}+${b}`)) this.members[best].push(`${a}+${b}`);
+        return { recruited: false, hub: best };
+    }
+
+    recall(a, b) {
+        const x = this.encode(a, b);
+        const sims = this.similarities(x);
+        if (!sims.length) return null;
+        const maxSim = Math.max(...sims);
+        const exps = sims.map(s => Math.exp(this.gain * (s - maxSim)));
+        const z = exps.reduce((p, q) => p + q, 0);
+        const acts = exps.map(e => e / z);
+        const output = new Array(21).fill(0);
+        acts.forEach((act, h) => {
+            const w = this.outW[h];
+            for (let s = 0; s < 21; s++) output[s] += act * w[s];
+        });
+        let predicted = 0;
+        for (let s = 1; s < 21; s++) if (output[s] > output[predicted]) predicted = s;
+        return { sims, acts, output, predicted, bestSim: maxSim,
+                 resonant: maxSim >= this.vigilance };
+    }
+}
+
+// ---- page state ----
+
+const state = { model: null, lastRecall: null, lastPair: null, evals: null, evalExpanded: false };
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const tooltip = document.getElementById('tooltip');
+
+const svg = d3.select('#canvas');
+let g, zoomBehavior, initialTransform = d3.zoomIdentity;
+
+// Logical drawing space; the zoom transform maps it into the viewport.
+const LW = 1280, LH = 660;
+
+function setupZoom() {
+    zoomBehavior = d3.zoom().scaleExtent([0.15, 4]).on('zoom', (ev) => {
+        g.attr('transform', ev.transform);
+    });
+    svg.call(zoomBehavior);
+    g = svg.append('g');
+    fitView(false);
+    window.addEventListener('resize', () => fitView(false));
+}
+
+function fitView(animate) {
+    const el = document.getElementById('main-content');
+    const scale = Math.min(el.clientWidth / LW, el.clientHeight / LH) * 0.94;
+    const tx = (el.clientWidth - LW * scale) / 2;
+    const ty = (el.clientHeight - LH * scale) / 2 - 10;
+    initialTransform = d3.zoomIdentity.translate(tx, ty).scale(scale);
+    (animate ? svg.transition().duration(300) : svg).call(zoomBehavior.transform, initialTransform);
+}
+
+function resetView() { fitView(true); }
+
+function showTip(ev, head, body) {
+    document.getElementById('tipHead').textContent = head;
+    document.getElementById('tipBody').innerHTML = body;
+    tooltip.classList.add('visible');
+    const flip = ev.pageX + 280 > window.innerWidth;
+    tooltip.style.left = flip ? (ev.pageX - 270) + 'px' : (ev.pageX + 14) + 'px';
+    tooltip.style.top = (ev.pageY - 10) + 'px';
+}
+function hideTip() { tooltip.classList.remove('visible'); }
+
+function decodeTemplate(t) {
+    const argmax = (s, e) => {
+        let bi = s;
+        for (let i = s; i < e; i++) if (t[i] > t[bi]) bi = i;
+        return bi - s;
+    };
+    return [argmax(0, 10), argmax(10, 20)];
+}
+
+// ---- training / evaluation ----
+
+function trainModel() {
+    const vig = +document.getElementById('vigilance').value;
+    const lr = +document.getElementById('lr').value;
+    const gain = +document.getElementById('gain').value;
+    const excl = +document.getElementById('excludeDigit').value;
+    const passes = +document.getElementById('passes').value;
+
+    state.model = new ARTAdditionModel(vig, lr, gain);
+    const pairs = [];
+    for (let a = 0; a <= 9; a++) {
+        for (let b = 0; b <= 9; b++) {
+            if (a === excl || b === excl) continue;
+            pairs.push([a, b]);
+        }
+    }
+    let trained = 0;
+    for (let p = 0; p < passes; p++) {
+        d3.shuffle(pairs);
+        for (const [a, b] of pairs) { state.model.train(a, b); trained++; }
+    }
+    document.getElementById('statHubs').textContent = state.model.templates.length;
+    document.getElementById('statPairs').textContent = trained;
+
+    evaluateAll(excl);
+    runTest();
+}
+
+function evaluateAll(excl) {
+    const m = state.model;
+    state.evals = [];
+    let trainOk = 0, trainN = 0, holdOk = 0, holdN = 0;
+    for (let a = 0; a <= 9; a++) {
+        for (let b = 0; b <= 9; b++) {
+            const r = m.recall(a, b);
+            const correct = r && r.predicted === a + b;
+            const held = (a === excl || b === excl);
+            state.evals.push({ a, b, predicted: r ? r.predicted : null, correct, held });
+            if (held) { holdOk += correct; holdN++; } else { trainOk += correct; trainN++; }
+        }
+    }
+    document.getElementById('statTrainAcc').textContent =
+        trainN ? `${trainOk}/${trainN}` : '–';
+    document.getElementById('statHoldAcc').textContent =
+        holdN ? `${holdOk}/${holdN}` : 'n/a';
+    document.getElementById('evalNote').textContent = holdN
+        ? `Outlined cells contain the excluded digit ${excl} — never trained.`
+        : 'No digit excluded — every pair was trained.';
+    drawEvalGrid(excl);
+}
+
+function runTest() {
+    if (!state.model) return;
+    const a = Math.min(9, Math.max(0, +document.getElementById('testA').value));
+    const b = Math.min(9, Math.max(0, +document.getElementById('testB').value));
+    const r = state.model.recall(a, b);
+    state.lastRecall = r;
+    state.lastPair = [a, b];
+    const truth = a + b;
+    const excl = +document.getElementById('excludeDigit').value;
+    const held = (a === excl || b === excl);
+
+    document.getElementById('recallLabel').textContent = `${a} + ${b}`;
+    document.getElementById('recallChips').innerHTML =
+        (r.predicted === truth
+            ? '<span class="outcome-chip success">correct</span>'
+            : '<span class="outcome-chip fail">wrong</span>') +
+        (r.resonant ? '' : '<span class="outcome-chip novel">no resonant hub</span>');
+    document.getElementById('recallInfo').innerHTML =
+        `true sum <strong>${truth}</strong> &middot; model says <strong>${r.predicted}</strong><br>` +
+        `best hub similarity <strong>${r.bestSim.toFixed(3)}</strong>` +
+        (held ? '<br><span style="color: var(--accent-soft)">this pair was never trained</span>' : '');
+    drawNetwork();
+    drawOutput(truth);
+}
+
+// ---- drawing ----
+
+function drawNetwork() {
+    const m = state.model, r = state.lastRecall, [a, b] = state.lastPair;
+    g.selectAll('*').remove();
+    const accent = css('--accent');
+    const bgCard = css('--bg-card') || '#1e293b';
+    const border = css('--border-mid') || '#334155';
+
+    const inputY = 70, outY = LH - 70;
+    const poolAx = (d) => LW / 2 - 320 + d * 30;
+    const poolBx = (d) => LW / 2 + 50 + d * 30;
+    const outX = (s) => LW / 2 - 460 + s * 46;
+
+    // hubs laid out in centered rows
+    const nHubs = m.templates.length;
+    const perRow = 27;
+    const rows = Math.max(1, Math.ceil(nHubs / perRow));
+    const hubRowY = (row) => (LH / 2 - (rows - 1) * 22) + row * 44;
+    const hubPos = (h) => {
+        const row = Math.floor(h / perRow);
+        const inRow = (row === rows - 1) ? nHubs - row * perRow : perRow;
+        const x0 = LW / 2 - (inRow - 1) * 42 / 2;
+        return { x: x0 + (h - row * perRow) * 42, y: hubRowY(row) };
+    };
+
+    const linkLayer = g.append('g');
+    const curve = (x1, y1, x2, y2) =>
+        `M ${x1} ${y1} C ${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`;
+
+    // recall connections: active inputs -> strongly active hubs -> their peak
+    // sum. Everything within half of the max activation is drawn, so a
+    // ten-way tie renders as ten equal links — not an arbitrary top-k subset.
+    const maxAct = d3.max(r.acts);
+    const topHubs = r.acts
+        .map((act, h) => ({ act, h }))
+        .filter(d => d.act >= Math.max(0.02, 0.5 * maxAct))
+        .sort((p, q) => q.act - p.act)
+        .slice(0, 24);
+    for (const { act, h } of topHubs) {
+        const hp = hubPos(h);
+        for (const x of [poolAx(a), poolBx(b)]) {
+            linkLayer.append('path').attr('class', 'net-link')
+                .attr('d', curve(x, inputY + 14, hp.x, hp.y - 9))
+                .attr('stroke', accent)
+                .attr('stroke-width', 0.8 + 3.5 * act)
+                .attr('opacity', 0.2 + 0.65 * act);
+        }
+        const w = m.outW[h];
+        let bs = 0;
+        for (let s = 1; s < 21; s++) if (w[s] > w[bs]) bs = s;
+        linkLayer.append('path').attr('class', 'net-link')
+            .attr('d', curve(hp.x, hp.y + 9, outX(bs), outY - 16))
+            .attr('stroke', accent)
+            .attr('stroke-width', 0.8 + 3.5 * act * w[bs])
+            .attr('opacity', 0.2 + 0.65 * act);
+    }
+
+    // input pools with backdrop plates
+    for (const [label, xf, sel] of [['INPUT A', poolAx, a], ['INPUT B', poolBx, b]]) {
+        g.append('rect')
+            .attr('x', xf(0) - 22).attr('y', inputY - 26)
+            .attr('width', 9 * 30 + 44).attr('height', 52)
+            .attr('rx', 12)
+            .attr('fill', 'rgba(148, 163, 184, 0.04)')
+            .attr('stroke', css('--border-soft') || '#1e293b');
+        g.append('text').attr('class', 'pool-label')
+            .attr('x', xf(0) - 16).attr('y', inputY - 34).text(label);
+    }
+    for (let pool = 0; pool < 2; pool++) {
+        for (let d = 0; d <= 9; d++) {
+            const x = pool === 0 ? poolAx(d) : poolBx(d);
+            const on = pool === 0 ? d === a : d === b;
+            g.append('circle')
+                .attr('class', 'input-node')
+                .attr('cx', x).attr('cy', inputY).attr('r', 13)
+                .attr('fill', on ? accent : bgCard)
+                .attr('stroke', on ? css('--accent-soft') : border)
+                .attr('stroke-width', on ? 2 : 1)
+                .on('click', () => {
+                    document.getElementById(pool === 0 ? 'testA' : 'testB').value = d;
+                    runTest();
+                })
+                .on('mousemove', (ev) => showTip(ev, `${pool === 0 ? 'A' : 'B'} = ${d}`,
+                    'click to probe this digit'))
+                .on('mouseleave', hideTip);
+            g.append('text').attr('class', 'io-digit')
+                .attr('x', x).attr('y', inputY + 3.5)
+                .attr('fill', on ? '#422006' : '#94a3b8')
+                .text(d);
+        }
+    }
+
+    // hubs
+    const color = d3.scaleLinear().domain([0, Math.max(0.15, d3.max(r.acts))])
+        .range([bgCard, accent]).clamp(true);
+    g.append('text').attr('class', 'pool-label')
+        .attr('x', LW / 2).attr('y', hubRowY(0) - 30)
+        .attr('text-anchor', 'middle')
+        .text(`HUBS (${nHubs})`);
+    m.templates.forEach((t, h) => {
+        const hp = hubPos(h);
+        const isTop = topHubs.some(d => d.h === h);
+        g.append('circle')
+            .attr('cx', hp.x).attr('cy', hp.y).attr('r', 9)
+            .attr('fill', color(r.acts[h]))
+            .attr('stroke', isTop ? css('--accent-soft') : border)
+            .attr('stroke-width', isTop ? 2 : 1)
+            .on('mousemove', (ev) => {
+                const [ta, tb] = decodeTemplate(t);
+                const w = m.outW[h];
+                let bs = 0;
+                for (let s = 1; s < 21; s++) if (w[s] > w[bs]) bs = s;
+                showTip(ev, `Hub — ${m.members[h].join(', ')}`,
+                    `template peak: (${ta}, ${tb})<br>` +
+                    `output peak: <strong>${bs}</strong> (w=${w[bs].toFixed(2)})<br>` +
+                    `similarity to probe: ${r.sims[h].toFixed(3)}<br>` +
+                    `activation: ${r.acts[h].toFixed(3)}`);
+            })
+            .on('mouseleave', hideTip);
+    });
+
+    // outputs 0..20
+    g.append('rect')
+        .attr('x', outX(0) - 24).attr('y', outY - 28)
+        .attr('width', 20 * 46 + 48).attr('height', 56)
+        .attr('rx', 12)
+        .attr('fill', 'rgba(148, 163, 184, 0.04)')
+        .attr('stroke', css('--border-soft') || '#1e293b');
+    g.append('text').attr('class', 'pool-label')
+        .attr('x', outX(0) - 16).attr('y', outY + 44).text('SUM 0–20');
+    for (let s = 0; s <= 20; s++) {
+        const on = s === r.predicted;
+        g.append('circle')
+            .attr('cx', outX(s)).attr('cy', outY).attr('r', 14)
+            .attr('fill', on ? accent : bgCard)
+            .attr('stroke', r.output[s] > 0.02 ? accent : border)
+            .attr('stroke-width', on ? 2.5 : 1)
+            .attr('opacity', on || r.output[s] > 0.02 ? 1 : 0.75);
+        g.append('text').attr('class', 'io-digit')
+            .attr('x', outX(s)).attr('y', outY + 3.5)
+            .attr('fill', on ? '#422006' : '#94a3b8')
+            .text(s);
+    }
+}
+
+function drawOutput(truth) {
+    const r = state.lastRecall;
+    const W = 380, H = 130, m = { l: 8, r: 8, t: 10, b: 18 };
+    const svgO = d3.select('#outSvg');
+    svgO.selectAll('*').remove();
+    const x = d3.scaleBand().domain(d3.range(21)).range([m.l, W - m.r]).padding(0.25);
+    const y = d3.scaleLinear().domain([0, Math.max(0.2, d3.max(r.output))]).range([H - m.b, m.t]);
+    for (const s of d3.range(21)) {
+        svgO.append('rect')
+            .attr('x', x(s)).attr('y', y(r.output[s]))
+            .attr('width', x.bandwidth())
+            .attr('height', H - m.b - y(r.output[s]))
+            .attr('rx', 2)
+            .attr('fill', s === r.predicted ? css('--accent') : css('--border-mid'));
+        if (s === truth) {
+            svgO.append('rect')
+                .attr('x', x(s) - 1.5).attr('y', m.t)
+                .attr('width', x.bandwidth() + 3).attr('height', H - m.b - m.t)
+                .attr('fill', 'none')
+                .attr('stroke', css('--success')).attr('stroke-dasharray', '3,3');
+        }
+        svgO.append('text')
+            .attr('x', x(s) + x.bandwidth() / 2).attr('y', H - 5)
+            .attr('text-anchor', 'middle').attr('font-size', 8).attr('fill', '#94a3b8')
+            .text(s);
+    }
+}
+
+function toggleEvalSize() {
+    state.evalExpanded = !state.evalExpanded;
+    document.getElementById('evalToggle').textContent = state.evalExpanded ? 'shrink ⤡' : 'expand ⤢';
+    drawEvalGrid(+document.getElementById('excludeDigit').value);
+}
+
+function drawEvalGrid(excl) {
+    const cell = state.evalExpanded ? 36 : 22;
+    const x0 = 30, y0 = 14;
+    const W = x0 + 10 * cell + 6, H = y0 + 10 * cell + 4;
+    const svgE = d3.select('#evalSvg').attr('width', W).attr('height', H);
+    svgE.selectAll('*').remove();
+
+    for (let d = 0; d <= 9; d++) {
+        svgE.append('text')
+            .attr('x', x0 + d * cell + cell / 2).attr('y', y0 - 4)
+            .attr('text-anchor', 'middle').attr('font-size', 8.5).attr('fill', '#94a3b8')
+            .text(`B${d}`);
+        svgE.append('text')
+            .attr('x', x0 - 10).attr('y', y0 + d * cell + cell / 2 + 3)
+            .attr('text-anchor', 'middle').attr('font-size', 8.5).attr('fill', '#94a3b8')
+            .text(`A${d}`);
+    }
+    for (const e of state.evals) {
+        const gx = x0 + e.b * cell, gy = y0 + e.a * cell;
+        svgE.append('rect')
+            .attr('class', 'eval-cell')
+            .attr('x', gx + 1).attr('y', gy + 1)
+            .attr('width', cell - 2).attr('height', cell - 2)
+            .attr('rx', 4)
+            .attr('fill', e.correct ? 'rgba(34, 197, 94, 0.18)' : 'rgba(239, 68, 68, 0.16)')
+            .attr('stroke', e.held ? css('--accent') : 'none')
+            .attr('stroke-width', e.held ? 1.2 : 0)
+            .on('click', () => {
+                document.getElementById('testA').value = e.a;
+                document.getElementById('testB').value = e.b;
+                runTest();
+            })
+            .on('mousemove', (ev) => showTip(ev, `${e.a} + ${e.b} = ${e.a + e.b}`,
+                `model predicts: <strong>${e.predicted}</strong><br>` +
+                (e.held ? 'held out (never trained)' : 'trained pair')))
+            .on('mouseleave', hideTip);
+        svgE.append('text')
+            .attr('x', gx + cell / 2).attr('y', gy + cell / 2 + 3.5)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', state.evalExpanded ? 12 : 9).attr('font-weight', 600)
+            .attr('fill', e.correct ? css('--success') : '#f87171')
+            .attr('pointer-events', 'none')
+            .text(e.predicted);
+    }
+}
+
+// ---- init ----
+setupZoom();
+trainModel();
+</script>
+<script src="/nav.js"></script>
+</body>
+</html>

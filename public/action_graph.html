@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Action Graph — Step-Indexed Hebbian Planning</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <script src="/action_graph_model.js"></script>
+    <style>
+        /* Action graph page uses rose accent */
+        :root {
+            --accent: #f43f5e;
+            --accent-dark: #e11d48;
+            --accent-glow: rgba(244, 63, 94, 0.2);
+            --accent-soft: #fb7185;
+            --sidebar-width: 340px;
+        }
+
+        #sidebar { gap: 12px; }
+
+        .panel-section {
+            background: var(--bg-card);
+            padding: 12px 14px 14px;
+            border-radius: var(--radius-lg);
+        }
+        .panel-section h4 {
+            margin: 0 0 4px 0;
+            font-size: 0.78rem;
+            color: var(--text-strong);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .panel-section .sub {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            margin: 0 0 10px 0;
+            line-height: 1.4;
+        }
+        .panel-section .sub code { font-size: 0.7rem; }
+
+        .grid-2, .grid-3 { display: grid; gap: 8px; margin-top: 8px; }
+        .grid-2 { grid-template-columns: 1fr 1fr; }
+        .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+        .panel-section .param-group { gap: 4px; min-width: 0; }
+        .panel-section .param-group label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .panel-section .param-group input[type="number"],
+        .panel-section .param-group select {
+            padding: 7px 8px;
+            font-size: 0.85rem;
+            background: var(--bg-panel);
+        }
+        .panel-section .param-group select { color: var(--text-strong); }
+        .check-row {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 0.76rem; color: var(--text-muted); margin-top: 10px;
+            white-space: nowrap;
+        }
+        .check-row input { accent-color: var(--accent); margin: 0; }
+
+        .action-btn {
+            width: 100%;
+            padding: 9px 10px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: #4c0519;
+            font-weight: 600;
+            font-size: 0.84rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .action-btn:hover:not(:disabled) { background: var(--accent-soft); }
+        .action-btn:disabled { opacity: 0.5; cursor: default; }
+        .action-btn.secondary {
+            background: var(--bg-panel);
+            color: var(--text-default);
+            border: 1px solid var(--border-mid);
+        }
+        .action-btn.secondary:hover:not(:disabled) { border-color: var(--accent); }
+        .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+        .btn-row .action-btn { flex: 1; }
+        .btn-link {
+            background: none; border: none; padding: 0; cursor: pointer;
+            color: var(--text-dim); font-size: 0.72rem; text-decoration: underline;
+        }
+        .btn-link:hover { color: var(--accent-soft); }
+
+        .divider {
+            display: flex; align-items: center; gap: 8px;
+            margin: 14px 0 2px; font-size: 0.68rem; letter-spacing: 1px;
+            text-transform: uppercase; color: var(--text-dim);
+        }
+        .divider::after { content: ''; flex: 1; height: 1px; background: var(--border-mid); }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 5px 12px;
+            font-size: 0.76rem;
+            color: var(--text-muted);
+            margin-top: 10px;
+        }
+        .stat-grid span { color: var(--text-strong); font-weight: 600; font-variant-numeric: tabular-nums; }
+        .stat-grid span.good { color: var(--success); }
+        .stat-grid span.bad { color: #f87171; }
+        .net-size { font-size: 0.72rem; color: var(--text-dim); margin-bottom: 2px; font-variant-numeric: tabular-nums; }
+        .goal-line {
+            margin-top: 8px; font-size: 0.74rem; color: var(--text-muted);
+            display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+        }
+        .goal-line code { color: var(--text-strong); }
+
+        .explainer {
+            background: var(--bg-card);
+            padding: 12px 14px;
+            border-radius: var(--radius-lg);
+            font-size: 0.76rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        .explainer h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.78rem;
+            color: var(--text-strong);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .explainer p { margin: 0 0 8px 0; }
+        .explainer p:last-child { margin: 0; }
+
+        #main-content {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: var(--bg-app);
+        }
+        #canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+        #canvas:active { cursor: grabbing; }
+
+        .info-card { width: 340px; max-height: 440px; }
+        .float-card {
+            position: absolute;
+            background: var(--bg-panel);
+            padding: 12px 14px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-soft);
+            z-index: 100;
+        }
+        .float-card h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .card-toggle {
+            cursor: pointer;
+            color: var(--accent-soft);
+            font-size: 0.72rem;
+            font-weight: 600;
+            user-select: none;
+        }
+        .card-toggle:hover { color: var(--accent); }
+        #weightCard { bottom: 20px; left: 20px; max-width: 470px; }
+        #curveCard { bottom: 20px; right: 20px; width: 320px; }
+        .card-note { font-size: 0.7rem; color: var(--text-muted); margin-top: 6px; line-height: 1.4; }
+
+        .outcome-chip {
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.78rem;
+        }
+        .outcome-chip.success { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+        .outcome-chip.fail { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+        .outcome-chip.neutral { background: var(--accent-glow); color: var(--accent-soft); }
+        .outcome-chip.mode { background: var(--bg-card); color: var(--text-soft); border: 1px solid var(--border-mid); }
+        #episodeChips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+        #episodeInfo { font-size: 0.8rem; color: var(--text-muted); line-height: 1.6; }
+        #episodeInfo strong { color: var(--text-strong); }
+        .plan-seq { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 6px; }
+        .plan-step {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.72rem;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-mid);
+            color: var(--text-default);
+        }
+        .plan-step.bridge { border-style: dashed; color: var(--success); }
+        .cand-row { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 6px; }
+        .cand {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;
+            background: var(--bg-card); border: 1px solid var(--border-mid); color: var(--text-muted);
+        }
+        .cand.correct { border-color: var(--success); color: var(--success); }
+        .cand.picked { background: var(--accent-glow); color: var(--accent-soft); border-color: var(--accent); }
+        .cand.picked.correct { color: var(--success); border-color: var(--success); background: rgba(34, 197, 94, 0.15); }
+        .scrub-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.74rem; color: var(--text-muted); }
+        .scrub-row input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+        .scrub-row .scrub-val { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+        .play-btn {
+            width: 26px; height: 26px; border-radius: 13px; flex: none;
+            background: var(--accent); color: #4c0519; border: none; cursor: pointer;
+            font-size: 0.72rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+            padding: 0 0 0 1px;
+        }
+        .play-btn:hover { background: var(--accent-soft); }
+        .play-btn.secondary { background: var(--bg-card); color: var(--text-default); border: 1px solid var(--border-mid); }
+        .card-tabs { display: flex; gap: 4px; }
+        .card-tab {
+            cursor: pointer; padding: 2px 9px; border-radius: 999px; font-size: 0.7rem; font-weight: 600;
+            color: var(--text-muted); background: var(--bg-card); border: 1px solid var(--border-mid); user-select: none;
+        }
+        .card-tab.active { color: #4c0519; background: var(--accent); border-color: var(--accent); }
+        #curveLegend { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; font-size: 0.68rem; color: var(--text-muted); min-height: 14px; }
+        #curveLegend span::before { content: ''; display: inline-block; width: 9px; height: 3px; border-radius: 2px; margin: 0 4px 2px 0; vertical-align: middle; background: var(--swatch); }
+        .action-btn.watching { background: var(--warning); }
+
+        .col-label { fill: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 1px; }
+        .col-sub { fill: var(--text-dim); font-size: 9.5px; }
+        .state-label {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 10.5px; text-anchor: middle; pointer-events: none;
+        }
+        .edge { fill: none; pointer-events: none; }
+        .edge.plan { pointer-events: stroke; cursor: help; }
+        .edge-label {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 9.5px; text-anchor: middle; pointer-events: none;
+            fill: var(--text-soft);
+            paint-order: stroke; stroke: var(--bg-app); stroke-width: 3px; stroke-linejoin: round;
+        }
+        #canvas rect.state-node { cursor: pointer; }
+        .hm-label { fill: var(--text-muted); font-size: 9px; }
+        .hm-group { fill: var(--text-dim); font-size: 9px; font-weight: 700; letter-spacing: 1px; }
+        #weightSvg rect.hm-cell { cursor: crosshair; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div style="display: flex; gap: 16px; margin-bottom: 4px;">
+        <a href="/" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">&larr; Home</a>
+        <a href="/art_modulo.html" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">ART Modulo &rarr;</a>
+        <a href="/changelog.html" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none; margin-left: auto;">About</a>
+    </div>
+    <h2>Action Graph</h2>
+    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+        (A, B, C) states, shared arithmetic actions, IAC with decay. Hebbian credit lands on
+        (step, action), not on the state pair.
+    </p>
+
+    <div class="panel-section">
+        <h4>Network Bounds</h4>
+        <div class="net-size" id="netSize"></div>
+        <div class="grid-3">
+            <div class="param-group">
+                <label>A, B max</label>
+                <input type="number" id="domA" value="12" min="2" max="30">
+            </div>
+            <div class="param-group">
+                <label>C max</label>
+                <input type="number" id="domC" value="6" min="1" max="20">
+            </div>
+            <div class="param-group">
+                <label>Scale ×D max</label>
+                <input type="number" id="dMax" value="3" min="1" max="6">
+            </div>
+        </div>
+        <div class="grid-2">
+            <div class="param-group">
+                <label>Base weight</label>
+                <input type="number" id="w0" value="0.003" min="0" step="any" data-arrow-step="0.001">
+            </div>
+            <div class="param-group">
+                <label>Decay</label>
+                <input type="number" id="decay" value="0.1" min="0" max="1" step="any" data-arrow-step="0.01">
+            </div>
+        </div>
+        <div class="grid-2">
+            <div class="param-group">
+                <label>Step competition (0 = off)</label>
+                <input type="number" id="inh" value="0.003" min="0" step="any" data-arrow-step="0.001">
+            </div>
+            <div class="param-group">
+                <label>Settle steps</label>
+                <input type="number" id="steps" value="30" min="1" max="200">
+            </div>
+        </div>
+        <div class="btn-row">
+            <button class="action-btn secondary" onclick="buildModel()">Rebuild network</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Hebbian Learning</h4>
+        <div class="grid-2">
+            <div class="param-group">
+                <label>Weight index</label>
+                <select id="mode" onchange="onModeChange()">
+                    <option value="step">step × action</option>
+                    <option value="action">action (pooled)</option>
+                </select>
+            </div>
+            <div class="param-group">
+                <label>Credit</label>
+                <select id="credit">
+                    <option value="coact">co-activation</option>
+                    <option value="path">walked plan only</option>
+                </select>
+            </div>
+        </div>
+        <div class="grid-2">
+            <div class="param-group">
+                <label>Threshold &theta;</label>
+                <input type="number" id="theta" value="0.25" min="0" max="1" step="any" data-arrow-step="0.05">
+            </div>
+            <div class="param-group">
+                <label>Rate &eta;</label>
+                <input type="number" id="eta" value="0.05" min="0" step="any" data-arrow-step="0.01">
+            </div>
+        </div>
+        <div class="grid-2">
+            <div class="param-group">
+                <label>Weight cap</label>
+                <input type="number" id="wMax" value="0.03" min="0" step="any" data-arrow-step="0.005">
+            </div>
+            <div class="param-group">
+                <label>Row budget (0 = off)</label>
+                <input type="number" id="budget" value="0.06" min="0" step="any" data-arrow-step="0.01">
+            </div>
+        </div>
+        <label class="check-row"><input type="checkbox" id="onlyOnSuccess"> Learn only on plan success</label>
+    </div>
+
+    <div class="panel-section">
+        <h4>Training</h4>
+        <div class="grid-3">
+            <div class="param-group">
+                <label>A, B start max</label>
+                <input type="number" id="rA" value="5" min="0">
+            </div>
+            <div class="param-group">
+                <label>C min</label>
+                <input type="number" id="rCmin" value="2" min="1">
+            </div>
+            <div class="param-group">
+                <label>C max</label>
+                <input type="number" id="rCmax" value="5" min="1">
+            </div>
+        </div>
+        <div class="grid-2">
+            <div class="param-group">
+                <label>Batch size</label>
+                <input type="number" id="batchN" value="100" min="1" max="5000">
+            </div>
+            <div class="param-group">
+                <label>Seed</label>
+                <input type="number" id="seed" value="1" min="0">
+            </div>
+        </div>
+        <div class="btn-row">
+            <button class="action-btn" id="trainBtn" onclick="trainBatch()">Train batch</button>
+            <button class="action-btn secondary" id="evalBtn" onclick="evaluateAll()">Evaluate</button>
+        </div>
+        <div class="stat-grid">
+            <div>Episodes</div><div><span id="statEpisodes">0</span></div>
+            <div>Untrained baseline</div><div><span id="statBaseline">–</span></div>
+            <div>Latest evaluation</div><div><span id="statEval">–</span></div>
+            <div>Efficiency (opt / found)</div><div><span id="statEff">–</span></div>
+            <div>Rolling success (50)</div><div><span id="statRoll">–</span></div>
+        </div>
+        <div id="evalByHops" class="card-note"></div>
+        <div style="margin-top: 6px;"><button class="btn-link" onclick="resetLearning()">reset learning</button></div>
+
+        <div class="divider">One episode</div>
+        <div class="grid-3">
+            <div class="param-group">
+                <label>A</label>
+                <input type="number" id="tA" value="4" min="0">
+            </div>
+            <div class="param-group">
+                <label>B</label>
+                <input type="number" id="tB" value="3" min="0">
+            </div>
+            <div class="param-group">
+                <label>C</label>
+                <input type="number" id="tC" value="3" min="1">
+            </div>
+        </div>
+        <div class="goal-line"><span>goal <code id="goalText">(1, 0, 0)</code></span></div>
+        <div class="btn-row">
+            <button class="action-btn" onclick="runTask(true)">Learn episode</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Test</h4>
+        <div class="grid-3">
+            <div class="param-group">
+                <label>A</label>
+                <input type="number" id="xA" value="4" min="0">
+            </div>
+            <div class="param-group">
+                <label>B</label>
+                <input type="number" id="xB" value="3" min="0">
+            </div>
+            <div class="param-group">
+                <label>C</label>
+                <input type="number" id="xC" value="3" min="1">
+            </div>
+        </div>
+        <div class="btn-row">
+            <button class="action-btn" onclick="runTest()">Test start</button>
+            <button class="action-btn secondary" id="testAllBtn" onclick="testAll()">Test all</button>
+        </div>
+        <div class="stat-grid">
+            <div>This start</div><div><span id="statTest">–</span></div>
+            <div>Correct goal rank</div><div><span id="statTestRank">–</span></div>
+            <div>All tasks</div><div><span id="statTestAll">–</span></div>
+        </div>
+        <div id="testByHops" class="card-note"></div>
+    </div>
+</div>
+
+<div id="main-content">
+    <svg id="canvas"></svg>
+    <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+
+    <div class="info-card">
+        <h4>Run <span id="episodeLabel" style="color: var(--accent-soft); text-transform: none; font-family: ui-monospace, monospace;"></span></h4>
+        <div id="episodeChips"></div>
+        <div id="episodeInfo"></div>
+        <div class="scrub-row">
+            <button class="play-btn" id="playBtn" onclick="togglePlay()" title="play the settle">&#9654;</button>
+            <input type="range" id="scrub" min="0" max="30" value="30" oninput="onScrub()">
+            <span id="scrubLabel" class="scrub-val">t = 30</span>
+        </div>
+        <div style="display: flex; gap: 16px;">
+            <label class="check-row" style="margin-top: 6px;"><input type="checkbox" id="showBridge" checked onchange="drawGraph()"> widest bridge</label>
+            <label class="check-row" style="margin-top: 6px;"><input type="checkbox" id="showAll" onchange="drawGraph(); fitView(true);"> all states</label>
+        </div>
+    </div>
+
+    <div class="float-card" id="weightCard">
+        <h4>Learned action weights
+            <span class="card-toggle" id="weightToggle" onclick="toggleWeightSize()">expand ⤢</span>
+        </h4>
+        <svg id="weightSvg"></svg>
+        <div class="card-note" id="weightNote" style="min-height: 0;"></div>
+    </div>
+
+    <div class="float-card" id="curveCard">
+        <h4>Training
+            <span class="card-tabs">
+                <span class="card-tab active" id="tabSuccess" onclick="setCurveTab('success')">success</span>
+                <span class="card-tab" id="tabWeights" onclick="setCurveTab('weights')">weights</span>
+            </span>
+        </h4>
+        <svg id="curveSvg" width="320" height="130"></svg>
+        <div id="curveLegend"></div>
+        <div class="scrub-row">
+            <span>episode</span>
+            <input type="range" id="epScrub" min="0" max="0" value="0" oninput="onEpScrub()">
+            <span id="epScrubLabel" class="scrub-val">live</span>
+        </div>
+    </div>
+</div>
+
+<div class="tooltip" id="tooltip">
+    <div class="tooltip-header" id="tipHead"></div>
+    <div class="tooltip-content" id="tipBody"></div>
+</div>
+
+<script>
+// ---- page state ----
+
+const state = {
+    model: null,
+    last: null,           // most recent episode/test record (rendered on the canvas)
+    tStep: null,          // settle-history index shown (null = final)
+    curve: [],            // {ep, success} per learning episode
+    evals: [],            // {ep, ok, n, eff, byHops} clamped evaluations
+    testEvals: [],        // {ep, ok, n, byHops} goal-free tests
+    baseline: null,
+    training: false,
+    playing: false,       // settle playback in progress
+    playTimer: null,
+    wHistory: [],         // {ep, W, start, goal, success} snapshot after every learning episode
+    epView: null,         // index into wHistory shown on the heatmap, or null for live
+    curveTab: 'success',
+    weightExpanded: false,
+    rng: null,
+};
+const PLAY_MS = 110;      // ms per settle step during playback
+const SHOW_ALL_ROWS = 40; // rows per sub-column when drawing the whole lattice
+const SHOW_MIN = 0.02;    // activation needed for a node to be drawn
+const COL_CAP = 36;       // max nodes drawn per step column
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const tooltip = document.getElementById('tooltip');
+const $ = (id) => document.getElementById(id);
+const num = (id) => +$(id).value;
+
+const svg = d3.select('#canvas');
+let g, zoomBehavior;
+let layoutBox = { w: 1200, h: 700 };
+
+function setupZoom() {
+    zoomBehavior = d3.zoom().scaleExtent([0.1, 4]).on('zoom', (ev) => g.attr('transform', ev.transform));
+    svg.call(zoomBehavior);
+    g = svg.append('g');
+    window.addEventListener('resize', () => fitView(false));
+}
+
+function fitView(animate) {
+    const el = $('main-content');
+    // keep the drawing out from under the corner cards
+    const inset = { left: 380, right: 40, top: 60, bottom: 240 };
+    const freeW = Math.max(300, el.clientWidth - inset.left - inset.right);
+    const freeH = Math.max(200, el.clientHeight - inset.top - inset.bottom);
+    const scale = Math.min(freeW / layoutBox.w, freeH / layoutBox.h, 1.1) * 0.96;
+    const tx = inset.left + (freeW - layoutBox.w * scale) / 2;
+    const ty = inset.top + (freeH - layoutBox.h * scale) / 2;
+    const t = d3.zoomIdentity.translate(tx, ty).scale(scale);
+    (animate ? svg.transition().duration(300) : svg).call(zoomBehavior.transform, t);
+}
+function resetView() { fitView(true); }
+
+function showTip(ev, head, body) {
+    $('tipHead').textContent = head;
+    $('tipBody').innerHTML = body;
+    tooltip.classList.add('visible');
+    const flip = ev.pageX + 300 > window.innerWidth;
+    tooltip.style.left = flip ? (ev.pageX - 290) + 'px' : (ev.pageX + 14) + 'px';
+    tooltip.style.top = (ev.pageY - 10) + 'px';
+}
+function hideTip() { tooltip.classList.remove('visible'); }
+
+// ---- model wiring ----
+
+function readLearningParams() {
+    const m = state.model;
+    m.w0 = num('w0'); m.decay = num('decay'); m.inh = Math.max(0, num('inh')); m.steps = Math.max(1, Math.round(num('steps')));
+    m.mode = $('mode').value; m.credit = $('credit').value;
+    m.theta = num('theta'); m.eta = num('eta'); m.wMax = num('wMax'); m.budget = num('budget');
+    m.onlyOnSuccess = $('onlyOnSuccess').checked;
+    $('scrub').max = m.steps;
+}
+
+function buildModel() {
+    const aMax = Math.max(2, Math.round(num('domA')));
+    const cMax = Math.max(1, Math.round(num('domC')));
+    const dMax = Math.max(1, Math.round(num('dMax')));
+    state.model = new ActionGraph.ActionGraphModel({ aMax, bMax: aMax, cMax, dMax });
+    readLearningParams();
+    clearHistory();
+    $('netSize').textContent = `${state.model.n} nodes · ${state.model.nE} edges · ${state.model.nA} actions`;
+    runTest();
+}
+
+function clearHistory() {
+    stopPlay();
+    state.curve = []; state.evals = []; state.testEvals = []; state.baseline = null;
+    state.wHistory = []; state.epView = null;
+    state.rng = ActionGraph.mulberry32(Math.round(num('seed')));
+    $('statTest').textContent = '–'; $('statTestRank').textContent = '–';
+    $('statTestAll').textContent = '–'; $('testByHops').textContent = '';
+    updateStats();
+}
+
+function onModeChange() { if (state.model) resetLearning(); }
+
+function resetLearning() {
+    state.model.resetLearning();
+    clearHistory();
+    runTest();
+}
+
+function clampStart(ids) {
+    const m = state.model;
+    const [a, b, c] = ids;
+    $(a).value = Math.min(m.aMax, Math.max(0, Math.round(num(a))));
+    $(b).value = Math.min(m.aMax, Math.max(0, Math.round(num(b))));
+    $(c).value = Math.min(m.cMax, Math.max(1, Math.round(num(c))));
+    return [num(a), num(b), num(c)];
+}
+
+function episodeTask() {
+    const start = clampStart(['tA', 'tB', 'tC']);
+    const goal = ActionGraph.ActionGraphModel.modTask(...start).goal;
+    $('goalText').textContent = `(${goal.join(', ')})`;
+    return { start, goal };
+}
+
+function recordLearning(r) {
+    const m = state.model;
+    state.curve.push({ ep: m.episodes, success: r.success });
+    state.wHistory.push({ ep: m.episodes, W: Float32Array.from(m.W), start: r.start, goal: r.goal, success: r.success });
+    state.epView = null;
+}
+
+function finishRender(r, learned, animateFit = true) {
+    stopPlay();
+    state.last = r;
+    state.tStep = null;
+    $('scrub').value = state.model.steps;
+    $('scrubLabel').textContent = `t = ${state.model.steps}`;
+    if (learned && r.learnedRows) recordLearning(r);
+    updateEpisodeCard();
+    updateStats();
+    drawGraph();
+    fitView(animateFit);  // a new episode is a new layout; scrubbing/toggles keep the user's view
+    drawWeights();
+    drawCurve();
+}
+
+// ---- settle playback ----
+
+function stopPlay() {
+    if (state.playTimer) clearInterval(state.playTimer);
+    state.playTimer = null; state.playing = false;
+    $('playBtn').innerHTML = '&#9654;';
+}
+
+function togglePlay() {
+    if (state.playing) { stopPlay(); return; }
+    if (!state.last || !state.last.history) return;
+    state.playing = true;
+    $('playBtn').innerHTML = '&#10074;&#10074;';
+    state.tStep = 0;
+    const show = () => {
+        $('scrub').value = state.tStep;
+        $('scrubLabel').textContent = `t = ${state.tStep}`;
+        drawGraph();
+    };
+    show();
+    state.playTimer = setInterval(() => {
+        state.tStep++;
+        if (state.tStep >= state.model.steps) { state.tStep = null; $('scrub').value = state.model.steps; $('scrubLabel').textContent = `t = ${state.model.steps}`; drawGraph(); stopPlay(); return; }
+        show();
+    }, PLAY_MS);
+}
+
+function runTask(learn) {
+    if (!state.model) return;
+    readLearningParams();
+    const t = episodeTask();
+    if (t.start.join() === t.goal.join()) {
+        $('episodeInfo').textContent = 'Start is already the goal.';
+        return;
+    }
+    const r = state.model.episode(t.start, t.goal, { learn, history: true });
+    r.mode = 'episode';
+    finishRender(r, learn);
+    if (learn) refreshTestStat();
+}
+
+function runTest() {
+    if (!state.model) return;
+    readLearningParams();
+    const start = clampStart(['xA', 'xB', 'xC']);
+    const goal = ActionGraph.ActionGraphModel.modTask(...start).goal;
+    if (start.join() === goal.join()) {
+        $('episodeInfo').textContent = 'Start is already the goal.';
+        return;
+    }
+    const r = state.model.test(start, goal, { history: true });
+    finishRender(r, false);
+    refreshTestStat(r);
+}
+
+function testAll() {
+    if (!state.model || state.training) return;
+    readLearningParams();
+    const m = state.model;
+    const tasks = m.allTasks(curriculumRange());
+    if (!tasks.length) { $('testByHops').textContent = 'No tasks in this range fit the domain.'; return; }
+    const res = m.evaluateTest(tasks);
+    const rec = { ep: m.episodes, ok: res.ok, n: res.n, byHops: res.byHops };
+    state.testEvals.push(rec);
+    $('statTestAll').textContent = `${res.ok}/${res.n} @ ep ${m.episodes}`;
+    $('testByHops').textContent = `by hops: ${fmtByHops(res.byHops)}`;
+    drawCurve();
+}
+
+function onScrub() {
+    stopPlay();
+    const t = +$('scrub').value;
+    state.tStep = t >= state.model.steps ? null : t;
+    $('scrubLabel').textContent = `t = ${t}`;
+    drawGraph();
+}
+
+function curriculumRange() {
+    return { aMin: 0, aMax: Math.round(num('rA')), cMin: Math.max(1, Math.round(num('rCmin'))), cMax: Math.round(num('rCmax')) };
+}
+
+function trainBatch() {
+    if (!state.model || state.training) return;
+    readLearningParams();
+    const m = state.model, range = curriculumRange();
+    const total = Math.max(1, Math.round(num('batchN')));
+    let done = 0;
+    state.training = true;
+    setBatchButtons(true);
+    $('trainBtn').textContent = `Training… 0/${total}`;
+    const tick = () => {
+        const chunk = Math.min(10, total - done);
+        for (let i = 0; i < chunk; i++) {
+            const t = m.sampleTask(state.rng, range);
+            if (!t) break;
+            const r = m.episode(t.start, t.goal, { learn: true });
+            if (r.learnedRows) recordLearning(r);
+            done++;
+        }
+        $('trainBtn').textContent = `Training… ${done}/${total}`;
+        drawCurve(); drawWeights(); updateStats();
+        if (done < total) { setTimeout(tick, 0); return; }
+        state.training = false;
+        setBatchButtons(false);
+        $('trainBtn').textContent = 'Train batch';
+        runTest();
+    };
+    setTimeout(tick, 0);
+}
+
+function setBatchButtons(disabled) {
+    for (const id of ['trainBtn', 'evalBtn', 'testAllBtn']) $(id).disabled = disabled;
+}
+
+// Re-score the Test panel's start without touching the canvas, so stepping
+// through training shows how that start fares after 1, 2, 3… episodes.
+function refreshTestStat(r) {
+    const m = state.model;
+    if (!r) {
+        const start = clampStart(['xA', 'xB', 'xC']);
+        const goal = ActionGraph.ActionGraphModel.modTask(...start).goal;
+        if (start.join() === goal.join()) return;
+        r = m.test(start, goal);
+    }
+    $('statTest').innerHTML = (r.success ? `<span class="good">pass</span>` : `<span class="bad">fail</span> → (${r.predicted ? r.predicted.join(', ') : '?'})`) +
+        ` <span style="color: var(--text-dim); font-weight: 400">@ ep ${m.episodes}</span>`;
+    $('statTestRank').textContent = `${r.rank} of ${r.candidates.length}`;
+}
+
+function evaluateAll() {
+    if (!state.model || state.training) return;
+    readLearningParams();
+    const m = state.model;
+    const tasks = m.allTasks(curriculumRange());
+    if (!tasks.length) { $('evalByHops').textContent = 'No tasks in this range fit the domain.'; return; }
+    const res = m.evaluate(tasks);
+    const rec = { ep: m.episodes, ok: res.ok, n: res.n, eff: res.meanEfficiency, byHops: res.byHops };
+    state.evals.push(rec);
+    if (m.episodes === 0) state.baseline = rec;
+    updateStats();
+    drawCurve();
+}
+
+function fmtByHops(byHops) {
+    return Object.keys(byHops).sort((p, q) => (+p) - (+q))
+        .map(h => `${h} hop${h === '1' ? '' : 's'}: ${byHops[h].ok}/${byHops[h].n}`).join(' · ');
+}
+
+function updateStats() {
+    const m = state.model;
+    $('statEpisodes').textContent = m.episodes;
+    $('statBaseline').textContent = state.baseline ? `${state.baseline.ok}/${state.baseline.n}` : '–';
+    const last = state.evals.length ? state.evals[state.evals.length - 1] : null;
+    $('statEval').textContent = last ? `${last.ok}/${last.n} @ ep ${last.ep}` : '–';
+    $('statEff').textContent = last ? last.eff.toFixed(2) : '–';
+    const recent = state.curve.slice(-50);
+    $('statRoll').textContent = recent.length
+        ? `${(recent.reduce((p, q) => p + q.success, 0) / recent.length).toFixed(2)} (n=${recent.length})` : '–';
+    $('evalByHops').textContent = last ? `by hops: ${fmtByHops(last.byHops)}` : '';
+}
+
+function actionShort(a) { return state.model.actions[a].short; }
+
+function updateEpisodeCard() {
+    const r = state.last, m = state.model;
+    $('episodeLabel').textContent = `(${r.start.join(', ')}) → (${r.goal.join(', ')})`;
+    const chips = [];
+    if (r.mode === 'test') {
+        chips.push('<span class="outcome-chip mode">test</span>');
+        chips.push(r.success ? '<span class="outcome-chip success">pass</span>'
+                             : '<span class="outcome-chip fail">fail</span>');
+    } else {
+        chips.push('<span class="outcome-chip mode">episode</span>');
+        if (r.plan.outcome === 'success') chips.push('<span class="outcome-chip success">plan reaches goal</span>');
+        else if (r.plan.outcome === 'dead_end') chips.push('<span class="outcome-chip fail">dead end</span>');
+        else chips.push('<span class="outcome-chip fail">walk limit</span>');
+        if (r.learnedRows) chips.push('<span class="outcome-chip neutral">learned</span>');
+    }
+    if (r.bridge.bottleneck > 0) chips.push(`<span class="outcome-chip neutral">bridge ${r.bridge.bottleneck.toFixed(2)}</span>`);
+    $('episodeChips').innerHTML = chips.join('');
+
+    const seq = (actions, cls) => actions.length
+        ? `<div class="plan-seq">${actions.map(a => `<span class="plan-step ${cls || ''}">${actionShort(a)}</span>`).join('')}</div>`
+        : '<div class="plan-seq"><span class="plan-step">∅</span></div>';
+    let html = '';
+    if (r.mode === 'test') {
+        const top = r.candidates.slice(0, 6);
+        html += `goal nodes (x, 0, 0) by activation · correct ranks <strong>${r.rank}</strong>/${r.candidates.length}` +
+            `<div class="cand-row">${top.map((c, k) => `<span class="cand${c.i === r.gi ? ' correct' : ''}${k === 0 ? ' picked' : ''}">${c.a}: ${c.act.toFixed(3)}</span>`).join('')}</div>`;
+        if (r.plan.path && r.plan.actions.length) {
+            html += `route to lit goal (${r.plan.actions.length} hops, optimal ${r.optHops ?? '∞'}):` + seq(r.plan.actions);
+        }
+        if (!r.success && r.bridge.path) {
+            html += `widest route to correct goal (min ${r.bridge.bottleneck.toFixed(3)}):` + seq(r.bridge.actions, 'bridge');
+        }
+    } else {
+        html += `plan (${r.hops} hops, optimal ${r.optHops ?? '∞'}):` + seq(r.plan.actions);
+        if (r.bridge.path && (r.plan.outcome !== 'success' || r.bridge.actions.join() !== r.plan.actions.join())) {
+            html += `widest bridge (min <strong>${r.bridge.bottleneck.toFixed(3)}</strong>, ${r.bridge.actions.length} hops):` + seq(r.bridge.actions, 'bridge');
+        } else if (!r.bridge.path) {
+            html += 'no active route<br>';
+        }
+    }
+    html += `active <strong>${r.active}</strong> / ${m.n} · goal at step <strong>${r.depth[r.gi] < 0 ? '∞' : r.depth[r.gi]}</strong>`;
+    $('episodeInfo').innerHTML = html;
+}
+
+// ---- canvas: layered branching view ----
+
+function drawGraph() {
+    const m = state.model, r = state.last;
+    if (!r) return;
+    const acts = state.tStep == null ? r.acts : r.history[state.tStep];
+    g.selectAll('*').remove();
+    const accent = css('--accent'), accentSoft = css('--accent-soft');
+    const bgCard = css('--bg-card') || '#1e293b', border = css('--border-mid') || '#334155';
+    const success = css('--success') || '#22c55e', danger = '#f87171';
+    const isTest = r.mode === 'test';
+    const showAll = $('showAll').checked;
+    const showBridge = $('showBridge').checked && r.bridge.path && !(isTest && r.success);
+
+    const pinned = new Set([r.si, r.gi, ...r.plan.path]);
+    if (isTest && r.pi >= 0) pinned.add(r.pi);
+    if (showBridge) r.bridge.path.forEach(i => pinned.add(i));
+    const planEdgeSet = new Set();
+    for (let t = 0; t < r.plan.actions.length; t++) planEdgeSet.add(`${r.plan.path[t]}>${r.plan.path[t + 1]}`);
+
+    // bucket reachable nodes by depth
+    const layers = new Map(), layerTotal = new Map();
+    let maxK = 0;
+    for (let i = 0; i < m.n; i++) {
+        let k = r.depth[i];
+        if (k < 0) { if (!pinned.has(i)) continue; k = -1; }
+        else layerTotal.set(k, (layerTotal.get(k) || 0) + 1);
+        if (showAll || acts[i] >= SHOW_MIN || pinned.has(i)) {
+            if (!layers.has(k)) layers.set(k, []);
+            layers.get(k).push(i);
+            if (k > maxK) maxK = k;
+        }
+    }
+    const unreachable = layers.get(-1);
+    if (unreachable) { layers.delete(-1); layers.set(maxK + 1, unreachable); maxK += 1; }
+
+    // Each step is a column; with "draw every state" a wide layer wraps into
+    // sub-columns of SHOW_ALL_ROWS so the whole lattice stays on one canvas.
+    const NW = 96, NH = 24, PITCH = 30, SUBW = 106, GAP = 190;
+    const ROWS = showAll ? SHOW_ALL_ROWS : COL_CAP;
+    const pos = new Map(), hidden = new Map(), layerX = new Map(), layerW = new Map();
+    let maxLen = 1;
+    for (const [k, nodes] of layers) {
+        nodes.sort((p, q) => (pinned.has(q) - pinned.has(p)) || (acts[q] - acts[p]));
+        let kept = nodes;
+        if (!showAll && nodes.length > COL_CAP) { kept = nodes.slice(0, COL_CAP); hidden.set(k, nodes.length - COL_CAP); }
+        kept.sort((p, q) => acts[q] - acts[p]);
+        layers.set(k, kept);
+        maxLen = Math.max(maxLen, Math.min(kept.length, ROWS));
+    }
+    let xCursor = 110;
+    for (let k = 0; k <= maxK; k++) {
+        const kept = layers.get(k) || [];
+        const subCols = Math.max(1, Math.ceil(kept.length / ROWS));
+        layerX.set(k, xCursor); layerW.set(k, (subCols - 1) * SUBW);
+        xCursor += (subCols - 1) * SUBW + GAP;
+    }
+    const colX = (k) => layerX.get(k) + layerW.get(k) / 2;   // centre of the layer (headers)
+    const centerY = 70 + (maxLen * PITCH) / 2;
+    for (const [k, kept] of layers) {
+        kept.forEach((i, j) => {
+            const sub = Math.floor(j / ROWS), row = j % ROWS;
+            const inSub = Math.min(ROWS, kept.length - sub * ROWS);
+            pos.set(i, { x: layerX.get(k) + sub * SUBW, y: centerY + (row - (inSub - 1) / 2) * PITCH });
+        });
+    }
+    layoutBox = { w: xCursor - GAP + NW / 2 + 110, h: 70 + maxLen * PITCH + 80 };
+
+    const edgeLayer = g.append('g'), nodeLayer = g.append('g'), labelLayer = g.append('g');
+    const curve = (p, q) => {
+        const x1 = p.x + NW / 2, x2 = q.x - NW / 2;
+        if (q.x > p.x) return `M ${x1} ${p.y} C ${(x1 + x2) / 2} ${p.y}, ${(x1 + x2) / 2} ${q.y}, ${x2} ${q.y}`;
+        // same or earlier column: arc over the top
+        const lift = 40 + Math.abs(p.y - q.y) * 0.15;
+        return `M ${p.x} ${p.y - NH / 2} C ${p.x} ${p.y - NH / 2 - lift}, ${q.x} ${q.y - NH / 2 - lift}, ${q.x} ${q.y - NH / 2}`;
+    };
+
+    // forward edges to the next column (the branching), among drawn nodes
+    for (const [i, p] of pos) {
+        for (let e = m.outPtr[i]; e < m.outPtr[i + 1]; e++) {
+            const j = m.dst[e];
+            const q = pos.get(j);
+            if (!q || r.depth[j] !== r.depth[i] + 1) continue;
+            if (planEdgeSet.has(`${i}>${j}`)) continue;
+            const lo = Math.min(acts[i], acts[j]);
+            if (lo < 0.05) continue;
+            const learned = r.wE[e] - m.w0;
+            edgeLayer.append('path').attr('class', 'edge')
+                .attr('d', curve(p, q))
+                .attr('stroke', accent)
+                .attr('stroke-width', 0.5 + 60 * Math.max(0, learned))
+                .attr('opacity', 0.05 + 0.4 * lo);
+        }
+    }
+    // widest bridge to the correct goal (dashed)
+    if (showBridge) {
+        for (let t = 0; t < r.bridge.actions.length; t++) {
+            const i = r.bridge.path[t], j = r.bridge.path[t + 1];
+            if (planEdgeSet.has(`${i}>${j}`)) continue;
+            const p = pos.get(i), q = pos.get(j);
+            if (!p || !q) continue;
+            edgeLayer.append('path').attr('class', 'edge')
+                .attr('d', curve(p, q)).attr('stroke', success)
+                .attr('stroke-width', 1.6).attr('stroke-dasharray', '5,4').attr('opacity', 0.8);
+        }
+    }
+    // the walked plan (episode) or the route activation took to the lit goal (test)
+    const planColor = isTest && !r.success ? danger : accentSoft;
+    for (let t = 0; t < r.plan.actions.length; t++) {
+        const i = r.plan.path[t], j = r.plan.path[t + 1], a = r.plan.actions[t];
+        const p = pos.get(i), q = pos.get(j);
+        if (!p || !q) continue;
+        const k = r.depth[i];
+        const w = k < 0 ? m.w0 : m.w0 + m.learned(k, a);
+        edgeLayer.append('path').attr('class', 'edge plan')
+            .attr('d', curve(p, q)).attr('stroke', planColor)
+            .attr('stroke-width', 2.2 + 60 * Math.max(0, w - m.w0)).attr('opacity', 0.95)
+            .on('mousemove', (ev) => showTip(ev, `step ${t + 1}: ${m.actions[a].label}`,
+                `(${m.label(i)}) → (${m.label(j)})<br>effective weight ${w.toFixed(4)} ` +
+                `(base ${m.w0} + learned ${(w - m.w0).toFixed(4)})`))
+            .on('mouseleave', hideTip);
+        const mx = (p.x + q.x) / 2;
+        const lift = 40 + Math.abs(p.y - q.y) * 0.15;
+        const my = q.x > p.x ? (p.y + q.y) / 2 - 5 : Math.min(p.y, q.y) - NH / 2 - lift * 0.75 - 4;
+        labelLayer.append('text').attr('class', 'edge-label').attr('x', mx).attr('y', my).text(actionShort(a));
+    }
+
+    // column headers
+    for (const [k, kept] of layers) {
+        const x = colX(k);
+        const isUnreach = unreachable && k === maxK;
+        g.append('text').attr('class', 'col-label').attr('x', x).attr('y', 34).attr('text-anchor', 'middle')
+            .text(isUnreach ? 'UNREACHABLE' : (k === 0 ? 'START' : `STEP ${k}`));
+        const active = kept.filter(i => acts[i] >= SHOW_MIN).length;
+        g.append('text').attr('class', 'col-sub').attr('x', x).attr('y', 48).attr('text-anchor', 'middle')
+            .text(isUnreach ? `${kept.length} shown` : `${active} active of ${layerTotal.get(k) || 0}${showAll ? ' · all drawn' : ''}`);
+        if (hidden.has(k)) {
+            g.append('text').attr('class', 'col-sub').attr('x', x).attr('text-anchor', 'middle')
+                .attr('y', centerY + (kept.length - 1) / 2 * PITCH + 26)
+                .text(`+${hidden.get(k)} more active`);
+        }
+    }
+
+    // nodes
+    const color = d3.scaleLinear().domain([0, 1]).range([bgCard, accent]).clamp(true);
+    for (const [i, p] of pos) {
+        const a = acts[i];
+        const isStart = i === r.si, isGoal = i === r.gi, isPicked = isTest && i === r.pi && !r.success;
+        const onPlan = r.plan.path.includes(i);
+        const stroke = isStart ? accentSoft : isGoal ? success : isPicked ? danger : onPlan ? css('--text-soft') : border;
+        const role = isStart ? ' — start' : isGoal ? (isTest ? ' — correct goal' : ' — goal') : isPicked ? ' — lit goal (wrong)' : '';
+        nodeLayer.append('rect').attr('class', 'state-node')
+            .attr('x', p.x - NW / 2).attr('y', p.y - NH / 2).attr('width', NW).attr('height', NH).attr('rx', 6)
+            .attr('fill', color(a))
+            .attr('stroke', stroke).attr('stroke-width', isStart || isGoal || isPicked ? 2.5 : onPlan ? 1.6 : 1)
+            .attr('stroke-dasharray', isGoal && isTest ? '4,3' : null)
+            .on('click', () => {
+                const s = m.states[i];
+                $('xA').value = s[0]; $('xB').value = s[1]; $('xC').value = Math.max(1, s[2]);
+                $('tA').value = s[0]; $('tB').value = s[1]; $('tC').value = Math.max(1, s[2]);
+                runTest();
+            })
+            .on('mousemove', (ev) => {
+                const outs = m.outPtr[i + 1] - m.outPtr[i];
+                const k = r.depth[i];
+                showTip(ev, `(${m.label(i)})${role}`,
+                    `step ${k < 0 ? '∞ (unreachable)' : k} from start · activation <strong>${a.toFixed(3)}</strong><br>` +
+                    `${outs} legal actions out · ${m.inPtr[i + 1] - m.inPtr[i]} ways in<br>` +
+                    `<span style="color: var(--text-dim)">click: test from here</span>`);
+            })
+            .on('mouseleave', hideTip);
+        nodeLayer.append('text').attr('class', 'state-label')
+            .attr('x', p.x).attr('y', p.y + 3.5)
+            .attr('fill', a > 0.55 ? '#4c0519' : css('--text-soft'))
+            .text(m.label(i));
+    }
+}
+
+// ---- learned weight heatmap ----
+
+function toggleWeightSize() {
+    state.weightExpanded = !state.weightExpanded;
+    $('weightToggle').textContent = state.weightExpanded ? 'shrink ⤡' : 'expand ⤢';
+    drawWeights();
+}
+
+function drawWeights() {
+    const m = state.model, r = state.last;
+    const snap = state.epView != null ? state.wHistory[state.epView] : null;
+    const Wv = snap ? snap.W : m.W;
+    const rows = m.mode === 'step' ? m.kMax : 1;
+    const cell = state.weightExpanded ? 22 : 14;
+    const x0 = 44, y0 = 46;
+    const W = x0 + m.nA * cell + 6, H = y0 + rows * cell + 6;
+    const svgW = d3.select('#weightSvg').attr('width', W).attr('height', H);
+    $('weightCard').style.maxWidth = (W + 30) + 'px';
+    svgW.selectAll('*').remove();
+    const accent = css('--accent');
+    const color = d3.scaleLinear().domain([0, Math.max(1e-6, m.wMax)]).range([css('--bg-card'), accent]).clamp(true);
+
+    // group bars for target variable
+    let gStart = 0;
+    for (let t = 0; t < 3; t++) {
+        const n = m.actions.filter(a => a.target === t).length;
+        svgW.append('rect').attr('x', x0 + gStart * cell + 1).attr('y', 2).attr('width', n * cell - 2).attr('height', 3).attr('rx', 1.5)
+            .attr('fill', accent).attr('opacity', 0.35 + 0.25 * t);
+        svgW.append('text').attr('class', 'hm-group').attr('x', x0 + (gStart + n / 2) * cell).attr('y', 13).attr('text-anchor', 'middle')
+            .text(`TARGET ${ActionGraph.VARS[t]}`);
+        gStart += n;
+    }
+    // column labels (rotated)
+    m.actions.forEach((a, j) => {
+        const lbl = a.short.replace(/^[ABC]/, '');
+        svgW.append('text').attr('class', 'hm-label')
+            .attr('transform', `translate(${x0 + j * cell + cell / 2 + 3}, ${y0 - 4}) rotate(-60)`)
+            .text(lbl);
+    });
+    // row labels
+    for (let k = 0; k < rows; k++) {
+        svgW.append('text').attr('class', 'hm-label').attr('x', x0 - 6).attr('y', y0 + k * cell + cell / 2 + 3).attr('text-anchor', 'end')
+            .text(m.mode === 'step' ? (k === m.kMax - 1 ? `step ${k}+` : `step ${k}`) : 'all steps');
+    }
+    // cells
+    const walked = new Set();
+    if (r) r.plan.actions.forEach((a, t) => walked.add(`${m.mode === 'step' ? Math.min(t, m.kMax - 1) : 0},${a}`));
+    for (let k = 0; k < rows; k++) {
+        let rowMax = -1, rowArg = -1, rowSum = 0;
+        for (let j = 0; j < m.nA; j++) { const w = Wv[m.slot(k, j)]; rowSum += w; if (w > rowMax) { rowMax = w; rowArg = j; } }
+        for (let j = 0; j < m.nA; j++) {
+            const w = Wv[m.slot(k, j)];
+            const isWalked = walked.has(`${k},${j}`);
+            svgW.append('rect').attr('class', 'hm-cell')
+                .attr('x', x0 + j * cell + 1).attr('y', y0 + k * cell + 1).attr('width', cell - 2).attr('height', cell - 2).attr('rx', 2)
+                .attr('fill', color(w))
+                .attr('stroke', isWalked ? css('--text-soft') : (j === rowArg && w > 0 ? css('--accent-soft') : 'none'))
+                .attr('stroke-width', isWalked ? 1.5 : 1)
+                .on('mousemove', (ev) => showTip(ev, `${m.actions[j].label} · ${m.mode === 'step' ? `step ${k}` : 'all steps'}`,
+                    `learned weight <strong>${w.toFixed(4)}</strong> (cap ${m.wMax})<br>` +
+                    `share of row ${rowSum > 0 ? (100 * w / rowSum).toFixed(0) : 0}% · row total ${rowSum.toFixed(4)}` +
+                    (m.budget > 0 ? ` / budget ${m.budget}` : '') +
+                    (isWalked ? '<br><span style="color: var(--text-soft)">on the route shown</span>' : '')))
+                .on('mouseleave', hideTip);
+        }
+    }
+    const summary = [];
+    for (let k = 0; k < Math.min(rows, 6); k++) {
+        let best = -1, bw = 0;
+        for (let j = 0; j < m.nA; j++) { const w = Wv[m.slot(k, j)]; if (w > bw) { bw = w; best = j; } }
+        if (best >= 0 && bw > 1e-4) summary.push(`${m.mode === 'step' ? k : '*'}: ${m.actions[best].short}`);
+    }
+    $('weightNote').textContent = (snap ? `ep ${snap.ep} of ${m.episodes} · ` : '') + (summary.length ? `strongest: ${summary.join('  ·  ')}` : '');
+}
+
+// ---- training curves ----
+
+function setCurveTab(tab) {
+    state.curveTab = tab;
+    $('tabSuccess').classList.toggle('active', tab === 'success');
+    $('tabWeights').classList.toggle('active', tab === 'weights');
+    drawCurve();
+}
+
+function syncEpScrub() {
+    const n = state.wHistory.length;
+    const sc = $('epScrub');
+    sc.max = n; sc.disabled = n === 0;
+    sc.value = state.epView == null ? n : state.epView;
+    $('epScrubLabel').textContent = state.epView == null ? (n ? `live` : '–') : `ep ${state.wHistory[state.epView].ep}`;
+}
+
+function onEpScrub() {
+    const v = +$('epScrub').value;
+    state.epView = v >= state.wHistory.length ? null : v;
+    syncEpScrub();
+    drawWeights();
+    drawCurve();
+}
+
+function drawCurve() {
+    syncEpScrub();
+    const W = 320, H = 130, mg = { l: 30, r: 10, t: 8, b: 20 };
+    const s = d3.select('#curveSvg');
+    s.selectAll('*').remove();
+    const maxEp = Math.max(10, state.model.episodes, ...state.evals.map(e => e.ep), ...state.testEvals.map(e => e.ep));
+    if (state.curveTab === 'weights') { drawWeightLines(s, W, H, mg, maxEp); return; }
+    $('curveLegend').innerHTML = '';
+    const x = d3.scaleLinear().domain([0, maxEp]).range([mg.l, W - mg.r]);
+    const y = d3.scaleLinear().domain([0, 1]).range([H - mg.b, mg.t]);
+    const axis = css('--border-mid');
+    s.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', axis);
+    s.append('line').attr('x1', mg.l).attr('x2', mg.l).attr('y1', y(0)).attr('y2', y(1)).attr('stroke', axis);
+    for (const v of [0, 0.5, 1]) {
+        s.append('text').attr('x', mg.l - 4).attr('y', y(v) + 3).attr('text-anchor', 'end').attr('font-size', 8).attr('fill', '#94a3b8').text(v);
+    }
+    s.append('text').attr('x', W - mg.r).attr('y', H - 6).attr('text-anchor', 'end').attr('font-size', 8).attr('fill', '#94a3b8').text(`episodes (${maxEp})`);
+
+    if (state.baseline) {
+        s.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(state.baseline.ok / state.baseline.n)).attr('y2', y(state.baseline.ok / state.baseline.n))
+            .attr('stroke', '#94a3b8').attr('stroke-dasharray', '3,3').attr('opacity', 0.7);
+    }
+    if (state.curve.length >= 2) {
+        const win = 25, pts = [];
+        for (let i = 0; i < state.curve.length; i++) {
+            const lo = Math.max(0, i - win + 1);
+            let sum = 0;
+            for (let j = lo; j <= i; j++) sum += state.curve[j].success;
+            pts.push([state.curve[i].ep, sum / (i - lo + 1)]);
+        }
+        s.append('path').attr('d', d3.line().x(d => x(d[0])).y(d => y(d[1]))(pts))
+            .attr('fill', 'none').attr('stroke', css('--accent')).attr('stroke-width', 1.6);
+    }
+    for (const e of state.evals) {
+        s.append('circle').attr('cx', x(e.ep)).attr('cy', y(e.ok / e.n)).attr('r', 4)
+            .attr('fill', css('--success')).attr('stroke', css('--bg-panel')).attr('stroke-width', 1.5)
+            .on('mousemove', (ev) => showTip(ev, `Clamped evaluation @ episode ${e.ep}`,
+                `success <strong>${e.ok}/${e.n}</strong> · efficiency ${e.eff.toFixed(2)}<br>${fmtByHops(e.byHops)}`))
+            .on('mouseleave', hideTip);
+    }
+    for (const e of state.testEvals) {
+        s.append('circle').attr('cx', x(e.ep)).attr('cy', y(e.ok / e.n)).attr('r', 4)
+            .attr('fill', css('--bg-panel')).attr('stroke', css('--accent-soft')).attr('stroke-width', 1.8)
+            .on('mousemove', (ev) => showTip(ev, `Goal-free test @ episode ${e.ep}`,
+                `correct goal lit <strong>${e.ok}/${e.n}</strong><br>${fmtByHops(e.byHops)}`))
+            .on('mouseleave', hideTip);
+    }
+    if (state.epView != null) {
+        const cx = x(state.wHistory[state.epView].ep);
+        s.append('line').attr('x1', cx).attr('x2', cx).attr('y1', y(0)).attr('y2', y(1)).attr('stroke', css('--text-soft')).attr('stroke-dasharray', '2,2');
+    }
+}
+
+// The learned program over time: one line per (step, action) slot for the
+// slots that end up strongest, so you can watch the sequence harden — or lock in.
+function drawWeightLines(s, W, H, mg, maxEp) {
+    const m = state.model, hist = state.wHistory;
+    const legend = $('curveLegend');
+    if (!hist.length) {
+        legend.innerHTML = '';
+        s.append('text').attr('x', W / 2).attr('y', H / 2).attr('text-anchor', 'middle').attr('font-size', 10).attr('fill', '#64748b').text('nothing learned yet');
+        return;
+    }
+    const nSlots = (m.mode === 'step' ? m.kMax : 1) * m.nA;
+    const last = hist[hist.length - 1].W;
+    const peak = new Float32Array(nSlots);
+    for (const h of hist) for (let i = 0; i < nSlots; i++) if (h.W[i] > peak[i]) peak[i] = h.W[i];
+    const slots = Array.from({ length: nSlots }, (_, i) => i)
+        .filter(i => peak[i] > 1e-4)
+        .sort((p, q) => (last[q] - last[p]) || (peak[q] - peak[p]))
+        .slice(0, 8);
+    const x = d3.scaleLinear().domain([0, maxEp]).range([mg.l, W - mg.r]);
+    const yMax = Math.max(m.wMax, d3.max(slots, i => peak[i]) || 0);
+    const y = d3.scaleLinear().domain([0, yMax]).range([H - mg.b, mg.t]);
+    const axis = css('--border-mid');
+    s.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', axis);
+    s.append('line').attr('x1', mg.l).attr('x2', mg.l).attr('y1', y(0)).attr('y2', y(yMax)).attr('stroke', axis);
+    for (const v of [0, yMax / 2, yMax]) {
+        s.append('text').attr('x', mg.l - 4).attr('y', y(v) + 3).attr('text-anchor', 'end').attr('font-size', 8).attr('fill', '#94a3b8').text(v.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''));
+    }
+    s.append('text').attr('x', W - mg.r).attr('y', H - 6).attr('text-anchor', 'end').attr('font-size', 8).attr('fill', '#94a3b8').text(`episodes (${maxEp})`);
+    s.append('line').attr('x1', mg.l).attr('x2', W - mg.r).attr('y1', y(m.wMax)).attr('y2', y(m.wMax)).attr('stroke', '#94a3b8').attr('stroke-dasharray', '3,3').attr('opacity', 0.5);
+    // The row budget rescales every episode, so raw traces jitter; show a short
+    // rolling mean (SMOOTH episodes) and sample at most ~400 points per line.
+    const SMOOTH = 15;
+    const stride = Math.max(1, Math.ceil(hist.length / 400));
+    const colors = d3.schemeTableau10;
+    const line = d3.line().x(d => x(d[0])).y(d => y(d[1])).curve(d3.curveMonotoneX);
+    const slotLabel = (i) => m.mode === 'step' ? `${Math.floor(i / m.nA)}: ${m.actions[i % m.nA].short}` : m.actions[i % m.nA].short;
+    const smoothAt = (i, h) => {
+        const lo = Math.max(0, h - SMOOTH + 1);
+        let sum = 0;
+        for (let j = lo; j <= h; j++) sum += hist[j].W[i];
+        return sum / (h - lo + 1);
+    };
+    slots.forEach((i, c) => {
+        const pts = [[0, 0]];
+        for (let h = 0; h < hist.length; h += stride) pts.push([hist[h].ep, smoothAt(i, h)]);
+        if ((hist.length - 1) % stride !== 0) pts.push([hist[hist.length - 1].ep, smoothAt(i, hist.length - 1)]);
+        s.append('path').attr('d', line(pts)).attr('fill', 'none').attr('stroke', colors[c % colors.length]).attr('stroke-width', 1.5).attr('opacity', 0.95);
+    });
+    if (state.epView != null) {
+        const cx = x(hist[state.epView].ep);
+        s.append('line').attr('x1', cx).attr('x2', cx).attr('y1', y(0)).attr('y2', y(yMax)).attr('stroke', css('--text-soft')).attr('stroke-dasharray', '2,2');
+    }
+    legend.innerHTML = slots.map((i, c) =>
+        `<span style="--swatch: ${colors[c % colors.length]}" title="learned weight now ${last[i].toFixed(4)}">${slotLabel(i)}</span>`).join('');
+
+}
+
+// ---- init ----
+['tA', 'tB', 'tC'].forEach(id => $(id).addEventListener('change', () => episodeTask()));
+['xA', 'xB', 'xC'].forEach(id => $(id).addEventListener('change', () => runTest()));
+setupZoom();
+buildModel();
+</script>
+<script src="/nav.js"></script>
+</body>
+</html>

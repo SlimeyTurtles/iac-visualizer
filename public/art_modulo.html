@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ART Modulo — Recurrent Subtraction</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        /* Modulo page uses sky accent */
+        :root {
+            --accent: #0ea5e9;
+            --accent-dark: #0284c7;
+            --accent-glow: rgba(14, 165, 233, 0.2);
+            --accent-soft: #38bdf8;
+            --sidebar-width: 320px;
+        }
+
+        #sidebar { gap: 14px; }
+
+        .panel-section {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+        }
+        .panel-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .param-row { display: flex; gap: 8px; }
+        .param-row .param-group { flex: 1; }
+
+        .action-btn {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: #082f49;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .action-btn:hover:not(:disabled) { background: var(--accent-soft); }
+        .action-btn.secondary {
+            background: var(--bg-card-2);
+            color: var(--text-default);
+            border: 1px solid var(--border-mid);
+        }
+        .action-btn.secondary:hover:not(:disabled) { border-color: var(--accent); }
+        .btn-stack { display: flex; flex-direction: column; gap: 8px; }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 12px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 10px;
+        }
+        .stat-grid span { color: var(--text-strong); font-weight: 600; }
+
+        .explainer {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+            font-size: 0.76rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        .explainer h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #main-content {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: var(--bg-app);
+        }
+        #canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+        #canvas:active { cursor: grabbing; }
+
+        .float-card {
+            position: absolute;
+            background: var(--bg-panel);
+            padding: 12px 14px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-soft);
+            z-index: 100;
+            transition: all 0.25s ease;
+        }
+        .float-card h4 {
+            margin: 0 0 8px 0;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .card-toggle {
+            cursor: pointer;
+            color: var(--accent-soft);
+            font-size: 0.72rem;
+            font-weight: 600;
+            user-select: none;
+        }
+        .card-toggle:hover { color: var(--accent); }
+        #trajCard { top: 64px; right: 20px; max-width: 250px; }
+        #evalCard { bottom: 20px; right: 20px; }
+
+        .traj-step {
+            font-family: monospace;
+            font-size: 0.82rem;
+            padding: 3px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-default);
+        }
+        .traj-step:hover { background: var(--bg-card-2); }
+        .traj-step.active { background: var(--bg-card-2); outline: 1px solid var(--accent); }
+        .traj-step .op-sub { color: var(--accent-soft); }
+        .traj-step .op-done { color: var(--success); }
+        .traj-step .op-add { color: #f59e0b; }
+        .traj-step .op-check { color: #c084fc; }
+        .traj-step.bad { color: #f87171; }
+        .traj-verdict { font-size: 0.75rem; margin-top: 6px; font-weight: 600; }
+
+        .outcome-chip {
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.78rem;
+        }
+        .outcome-chip.success { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+        .outcome-chip.fail { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+        .outcome-chip.novel { background: rgba(14, 165, 233, 0.15); color: var(--accent-soft); }
+        #recallInfo { font-size: 0.8rem; color: var(--text-muted); line-height: 1.6; }
+        #recallInfo strong { color: var(--text-strong); }
+        #recallChips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+
+        .pool-label {
+            fill: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1.2px;
+        }
+        .io-digit { font-size: 9.5px; text-anchor: middle; pointer-events: none; font-weight: 600; }
+        .net-link { fill: none; }
+        #canvas circle.input-node { cursor: pointer; }
+        #evalSvg rect.eval-cell { cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div style="display: flex; gap: 16px; margin-bottom: 4px;">
+        <a href="/" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">&larr; Home</a>
+        <a href="/art_arithmetic.html" style="color: #94a3b8; font-size: 0.8rem; text-decoration: none;">Add &amp; Subtract &rarr;</a>
+    </div>
+    <h2>ART Modulo</h2>
+    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;">
+        A <strong>goal pool</strong> (&plusmn; arithmetic / % modulo) now frames every
+        state. Under the arithmetic goal, hubs compute A&nbsp;&plusmn;&nbsp;B in one shot
+        and the next operator is <em>nothing</em> (&empty; — an empty op pool). Under
+        the modulo goal, the operator pool's <strong>check</strong> (?) and
+        <strong>done</strong> (✓) nodes drive the recurrence. Hubs map a state (op, A, B) to the
+        <strong>next step</strong> (op&prime;, A&prime;, B&prime;) of
+        modulo-by-repeated-subtraction, now fully factored: <em>check</em> only
+        <strong>compares</strong> (emitting an outcome state &gt; or &lt;), separate
+        trained transitions carry the <strong>decision</strong> (&gt;&nbsp;&rarr;&nbsp;sub,
+        &lt;&nbsp;&rarr;&nbsp;done), and subtraction itself is always the arithmetic
+        facts' job. Modulo memories are pure <em>control</em> (they output only the
+        next op; operands persist), arithmetic memories are pure <em>facts</em>
+        (only operands; the goal's policy fills silent control). Recall is fed back into the input, so the
+        network <em>runs</em> the algorithm. Trained on every A&nbsp;mod&nbsp;B step for
+        A&nbsp;0&ndash;9, B&nbsp;&isin;&nbsp;{1,&nbsp;2,&nbsp;4,&nbsp;5} — <strong>mod&nbsp;3 is
+        never taught</strong>. Note the 19-unit A pool makes digit flips cheap
+        (similarity 0.965), so vigilance must sit above that to keep exemplar hubs.
+    </p>
+
+    <div class="panel-section">
+        <h4>Model</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Vigilance</label>
+                <input type="number" id="vigilance" value="0.98" min="0" max="1" step="any" data-arrow-step="0.005">
+            </div>
+            <div class="param-group">
+                <label>Learning rate</label>
+                <input type="number" id="lr" value="0.2" min="0" max="1" step="any" data-arrow-step="0.05">
+            </div>
+        </div>
+        <div class="param-row" style="margin-top: 8px;">
+            <div class="param-group">
+                <label>Softmax gain</label>
+                <input type="number" id="gain" value="400" min="1" step="any" data-arrow-step="10">
+            </div>
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--text-muted); margin-top: 8px; cursor: pointer;">
+            <input type="checkbox" id="forceOpMatch" checked style="accent-color: var(--accent);" onchange="trainModel()">
+            Match on operands: op enforced, goal not matched
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--text-muted); margin-top: 8px; cursor: pointer;">
+            <input type="checkbox" id="ctxFallback" style="accent-color: var(--accent);" onchange="trainModel()">
+            Legacy wired fallback (% &rarr; check on silent op) — off: the op comes only from same-goal memories
+        </label>
+    </div>
+
+    <div class="panel-section">
+        <h4>Training</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Skip modulus (−1 = none)</label>
+                <input type="number" id="excludeB" value="3" min="-1" max="5">
+            </div>
+            <div class="param-group">
+                <label>Passes</label>
+                <input type="number" id="passes" value="1" min="1" max="10">
+            </div>
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--text-muted); margin-top: 8px; cursor: pointer;">
+            <input type="checkbox" id="trainCheckOnSkip" checked style="accent-color: var(--accent);" onchange="trainModel()">
+            Still train <strong>check</strong> (comparison only) on the skipped modulus — the &ge;/&lt; <strong>decisions</strong> stay untrained
+        </label>
+        <div class="btn-stack" style="margin-top: 10px;">
+            <button class="action-btn" id="trainBtn" onclick="trainModel()">Train</button>
+        </div>
+        <div class="stat-grid">
+            <div>Hubs recruited</div><div><span id="statHubs">0</span></div>
+            <div>Steps trained</div><div><span id="statPairs">0</span></div>
+            <div>Trained mods solved</div><div><span id="statTrainAcc">–</span></div>
+            <div>Skipped mod solved</div><div><span id="statHoldAcc">–</span></div>
+            <div>Arith facts correct</div><div><span id="statArithAcc">–</span></div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h4>Compute A mod B</h4>
+        <div class="param-row">
+            <div class="param-group">
+                <label>Goal</label>
+                <select id="testGoal">
+                    <option value="1">% modulo</option>
+                    <option value="0">&plusmn; arithmetic</option>
+                </select>
+            </div>
+            <div class="param-group">
+                <label>Start op</label>
+                <select id="testStartOp">
+                    <option value="2">? check</option>
+                    <option value="3">&gt; A&ge;B</option>
+                    <option value="4">&lt; A&lt;B</option>
+                    <option value="1">&minus; sub</option>
+                    <option value="0">+ add</option>
+                </select>
+            </div>
+        </div>
+        <div class="param-row" style="margin-top: 8px;">
+            <div class="param-group">
+                <label>A (0–18)</label>
+                <input type="number" id="testA" value="9" min="0" max="18">
+            </div>
+            <div class="param-group">
+                <label>B (0–5)</label>
+                <input type="number" id="testB" value="4" min="0" max="5">
+            </div>
+        </div>
+        <div class="btn-stack" style="margin-top: 10px;">
+            <button class="action-btn" onclick="runToDone()">Run to Done</button>
+            <button class="action-btn secondary" onclick="stepOnce()">Step Once</button>
+        </div>
+    </div>
+
+    <div class="explainer">
+        <h4>What this tests</h4>
+        <p style="margin: 0 0 8px 0;">
+            The training set never says what a state is "worth" — each hub only
+            memorizes one <em>transition</em>. Chaining recalls through the input is
+            what turns a lookup table into a running algorithm: mod&nbsp;5 works
+            because every intermediate state on its trajectory was trained.
+        </p>
+        <p style="margin: 0;">
+            Probing mod&nbsp;3 asks whether transitions can extrapolate. With localist
+            B units the state (Sub, 7, 3) ties every hub (Sub, 7, B&prime;) equally —
+            the blended next-state votes mix A&minus;1, A&minus;2, A&minus;4 and
+            A&minus;5, and the trajectory derails on the first step. Same flat-tie
+            failure as the addition page, now compounding across the recurrence.
+        </p>
+    </div>
+</div>
+
+<div id="main-content">
+    <svg id="canvas"></svg>
+    <button class="reset-view-btn" onclick="resetView()">Reset View</button>
+
+    <div class="info-card">
+        <h4>Step Recall <span id="recallLabel" style="color: var(--accent-soft); text-transform: none;"></span></h4>
+        <div id="recallChips"></div>
+        <div id="recallInfo">Train the model to begin.</div>
+    </div>
+
+    <div class="float-card" id="trajCard">
+        <h4>Trajectory</h4>
+        <div id="trajList" style="display: flex; flex-direction: column; gap: 2px;">–</div>
+        <div class="traj-verdict" id="trajVerdict"></div>
+    </div>
+
+    <div class="float-card" id="evalCard">
+        <h4>A mod B
+            <span class="card-toggle" id="evalToggle" onclick="toggleEvalSize()">expand ⤢</span>
+        </h4>
+        <svg id="evalSvg"></svg>
+        <div id="evalNote" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;"></div>
+    </div>
+</div>
+
+<div class="tooltip" id="tooltip">
+    <div class="tooltip-header" id="tipHead"></div>
+    <div class="tooltip-content" id="tipBody"></div>
+</div>
+
+<script>
+// ---- model ----
+
+const OPS = ['+', '−', '?', '>', '<', '✓'];  // add, sub, check, A≥B, A<B, done
+const OP_ADD = 0, OP_SUB = 1, OP_CHECK = 2, OP_GT = 3, OP_LT = 4, OP_DONE = 5;
+const OP_NONE = -1;                     // "nothing" — an empty operator pool
+const NOPS = 6;
+const GOALS = ['±', '%'];               // arithmetic, modulo
+const G_ARITH = 0, G_MOD = 1, GN = 2;
+const AMAX = 18, AN = AMAX + 1;         // A pool 0..18
+const BMAX = 5, BN = BMAX + 1;          // B pool 0..5
+const DIM = GN + NOPS + AN + BN;        // goal + op + A + B pools
+const SLICES = [[0, GN], [GN, GN + NOPS], [GN + NOPS, GN + NOPS + AN], [GN + NOPS + AN, DIM]];
+const opLabel = (op) => op === OP_NONE ? '∅' : OPS[op];
+
+function trueNext(goal, op, a, b) {
+    if (goal === G_ARITH) {
+        // One-shot compute: result lands in A, the next operator is nothing.
+        if (op === OP_ADD) return { goal, op: OP_NONE, a: Math.min(AMAX, a + b), b };
+        if (op === OP_SUB) return { goal, op: OP_NONE, a: Math.max(0, a - b), b };
+        return { goal, op: OP_NONE, a, b };
+    }
+    if (b <= 0) return { goal, op: OP_DONE, a, b };
+    // Fully factored loop: check only COMPARES (emits an outcome state);
+    // separate response transitions carry the DECISION (≥ → sub, < → done);
+    // sub only subtracts and hands back to check.
+    if (op === OP_CHECK) return { goal, op: a >= b ? OP_GT : OP_LT, a, b };
+    if (op === OP_GT) return { goal, op: OP_SUB, a, b };
+    if (op === OP_LT) return { goal, op: OP_DONE, a, b };
+    if (op !== OP_SUB) return { goal, op: OP_DONE, a, b };
+    if (a < b) return { goal, op: OP_CHECK, a, b };
+    return { goal, op: OP_CHECK, a: a - b, b };
+}
+
+class ARTModuloModel {
+    constructor(vigilance, lr, gain, forceOp = true, ctxFallback = true) {
+        this.vigilance = vigilance;
+        this.lr = lr;
+        this.gain = gain;
+        this.forceOp = forceOp;
+        this.ctxFallback = ctxFallback;
+        this.templates = [];
+        this.outW = [];      // DIM-length next-state association (3 one-hots)
+        this.members = [];
+    }
+
+    // Hard ART constraint: a hub is only eligible if its template carries
+    // the probe's operator. Different operators never compete.
+    eligible(op, t) {
+        if (op < 0) return true;  // no operator cue — nothing to enforce
+        return !this.forceOp || t[GN + op] > 0.5;
+    }
+
+    encode(goal, op, a, b) {
+        const x = new Array(DIM).fill(0);
+        if (goal >= 0) x[goal] = 1;
+        if (op >= 0) x[GN + op] = 1;
+        if (a >= 0) x[GN + NOPS + a] = 1;
+        if (b >= 0) x[GN + NOPS + AN + b] = 1;
+        return x;
+    }
+
+    static label(goal, op, a, b) { return `${GOALS[goal]} ${opLabel(op)} ${a}, ${b}`; }
+
+    similarity(x, t) {
+        let sim = 0;
+        for (const [s, e] of SLICES) {
+            let d2 = 0;
+            for (let i = s; i < e; i++) { const d = x[i] - t[i]; d2 += d * d; }
+            sim += 1 - d2 / (e - s);
+        }
+        return sim / SLICES.length;
+    }
+
+    similarities(x) {
+        return this.templates.map(t => this.similarity(x, t));
+    }
+
+
+    train(goal, op, a, b) {
+        const x = this.encode(goal, op, a, b);
+        const nxt = trueNext(goal, op, a, b);
+        const target = this.encode(nxt.goal, nxt.op, nxt.a, nxt.b);
+        // Arithmetic memories are pure FACTS: they say what the numbers
+        // become, never what to do next or why (goal + op pools empty).
+        // Modulo memories are pure CONTROL: they say what to do next,
+        // never what the numbers are (goal + operand pools empty — the
+        // operands persist through comparison and decision steps anyway).
+        if (goal === G_ARITH) {
+            for (let i = 0; i < GN + NOPS; i++) target[i] = 0;
+        } else {
+            for (let i = 0; i < GN; i++) target[i] = 0;
+            // check/decision memories are pure control (operands persist);
+            // mod sub memories keep full outputs — they're the in-goal data
+            // that says "after subtracting, the numbers change AND you check".
+            if (op !== OP_SUB) for (let i = GN + NOPS; i < DIM; i++) target[i] = 0;
+        }
+        const sims = this.similarities(x);
+        let best = -1, bestSim = -Infinity;
+        sims.forEach((s, i) => {
+            if (this.eligible(op, this.templates[i]) && s > bestSim) { bestSim = s; best = i; }
+        });
+
+        if (best < 0 || bestSim < this.vigilance) {
+            this.templates.push([...x]);
+            this.outW.push([...target]);
+            this.members.push([ARTModuloModel.label(goal, op, a, b)]);
+            return;
+        }
+        const t = this.templates[best], w = this.outW[best];
+        for (let i = 0; i < DIM; i++) {
+            t[i] += this.lr * (x[i] - t[i]);
+            w[i] += this.lr * (target[i] - w[i]);
+        }
+        const lbl = ARTModuloModel.label(goal, op, a, b);
+        if (!this.members[best].includes(lbl)) this.members[best].push(lbl);
+    }
+
+    recall(goal, op, a, b) {
+        const x = this.encode(goal, op, a, b);
+        // Recall matching: operand (A, B) similarity; op is a hard
+        // constraint and the goal only breaks exact-operand ties (−0.02).
+        // Pools with no active unit are masked out of matching entirely —
+        // a partial cue matches on whatever is present.
+        const slices = [];
+        if (!this.forceOp) {
+            if (goal >= 0) slices.push(SLICES[0]);
+            if (op >= 0) slices.push(SLICES[1]);
+        }
+        if (a >= 0) slices.push(SLICES[2]);
+        if (b >= 0) slices.push(SLICES[3]);
+        const sims = this.templates.map(t => {
+            let sim = 0;
+            for (const [s, e] of slices) {
+                let d2 = 0;
+                for (let i = s; i < e; i++) { const d = x[i] - t[i]; d2 += d * d; }
+                sim += 1 - d2 / (e - s);
+            }
+            sim = slices.length ? sim / slices.length : 0;
+            if (this.forceOp && goal >= 0 && t[goal] < 0.5) sim -= 0.02;
+            return sim;
+        });
+        const elig = this.templates.map(t => this.eligible(op, t));
+        if (!sims.length || !elig.some(Boolean)) return null;
+        let maxSim = -Infinity;
+        sims.forEach((s, i) => { if (elig[i] && s > maxSim) maxSim = s; });
+        const exps = sims.map((s, i) => elig[i] ? Math.exp(this.gain * (s - maxSim)) : 0);
+        const z = exps.reduce((p, q) => p + q, 0);
+        const acts = exps.map(e => e / z);
+        const output = new Array(DIM).fill(0);
+        acts.forEach((act, h) => {
+            const w = this.outW[h];
+            for (let i = 0; i < DIM; i++) output[i] += act * w[i];
+        });
+        const argmaxIn = (s, e) => {
+            let bi = s;
+            for (let i = s; i < e; i++) if (output[i] > output[bi]) bi = i;
+            return bi - s;
+        };
+        // CONTROL read: the op pool listens only to SAME-GOAL memories —
+        // facts transfer across goals, policies don't. "After mod-sub comes
+        // check" lives in the other moduli's sub hubs; "after arithmetic
+        // comes nothing" is the arith hubs' unanimous silence. This replaces
+        // the wired goal policy with data.
+        let ctrlActs = new Array(this.templates.length).fill(0);
+        const opOut = new Array(NOPS).fill(0);
+        if (goal >= 0 && op >= 0) {
+            const cElig = this.templates.map((t, i) => elig[i] && t[goal] > 0.5);
+            if (cElig.some(Boolean)) {
+                let cMax = -Infinity;
+                sims.forEach((sv, i) => { if (cElig[i] && sv > cMax) cMax = sv; });
+                const cExps = sims.map((sv, i) => cElig[i] ? Math.exp(this.gain * (sv - cMax)) : 0);
+                const cz = cExps.reduce((p, q) => p + q, 0);
+                ctrlActs = cExps.map(e => e / cz);
+                ctrlActs.forEach((act, h) => {
+                    const w = this.outW[h];
+                    for (let o = 0; o < NOPS; o++) opOut[o] += act * w[GN + o];
+                });
+            }
+        }
+
+        // Silent pools defer to the task context: an empty goal pool means
+        // the goal persists (it's the agent's intention, not a memory).
+        const goalIdx = argmaxIn(0, GN);
+        const nextGoal = output[goalIdx] < 0.25 ? goal : goalIdx;
+        let opIdx = 0;
+        for (let o = 1; o < NOPS; o++) if (opOut[o] > opOut[opIdx]) opIdx = o;
+        const nextOp = opOut[opIdx] >= 0.25 ? opIdx
+            : (this.ctxFallback && nextGoal === G_MOD ? OP_CHECK : OP_NONE);
+        // Silent operand pools persist too — control memories don't
+        // rewrite the numbers they act on.
+        const aIdx = argmaxIn(GN + NOPS, GN + NOPS + AN);
+        const bIdx = argmaxIn(GN + NOPS + AN, DIM);
+        return {
+            sims, acts, ctrlActs, output,
+            nextGoal,
+            nextOp,
+            opFromPolicy: opOut[opIdx] < 0.25 && nextOp !== OP_NONE,
+            nextA: output[GN + NOPS + aIdx] >= 0.25 ? aIdx : a,
+            nextB: output[GN + NOPS + AN + bIdx] >= 0.25 ? bIdx : b,
+            bestSim: maxSim,
+            resonant: maxSim >= this.vigilance,
+        };
+    }
+}
+
+// ---- page state ----
+
+const state = { model: null, steps: [], activeStep: -1, evals: null, evalExpanded: false };
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const tooltip = document.getElementById('tooltip');
+
+const svg = d3.select('#canvas');
+let g, zoomBehavior, initialTransform = d3.zoomIdentity;
+
+const LW = 1320, LH = 700;
+
+function setupZoom() {
+    zoomBehavior = d3.zoom().scaleExtent([0.15, 4]).on('zoom', (ev) => {
+        g.attr('transform', ev.transform);
+    });
+    svg.call(zoomBehavior);
+    g = svg.append('g');
+    fitView(false);
+    window.addEventListener('resize', () => fitView(false));
+}
+
+function fitView(animate) {
+    const el = document.getElementById('main-content');
+    const scale = Math.min(el.clientWidth / LW, el.clientHeight / LH) * 0.94;
+    const tx = (el.clientWidth - LW * scale) / 2;
+    const ty = (el.clientHeight - LH * scale) / 2 - 10;
+    initialTransform = d3.zoomIdentity.translate(tx, ty).scale(scale);
+    (animate ? svg.transition().duration(300) : svg).call(zoomBehavior.transform, initialTransform);
+}
+
+function resetView() { fitView(true); }
+
+function showTip(ev, head, body) {
+    document.getElementById('tipHead').textContent = head;
+    document.getElementById('tipBody').innerHTML = body;
+    tooltip.classList.add('visible');
+    const flip = ev.pageX + 280 > window.innerWidth;
+    tooltip.style.left = flip ? (ev.pageX - 270) + 'px' : (ev.pageX + 14) + 'px';
+    tooltip.style.top = (ev.pageY - 10) + 'px';
+}
+function hideTip() { tooltip.classList.remove('visible'); }
+
+function decodeState(vec) {
+    const argmaxIn = (s, e) => {
+        let bi = s;
+        for (let i = s; i < e; i++) if (vec[i] > vec[bi]) bi = i;
+        return bi - s;
+    };
+    const goalIdx = argmaxIn(0, GN);
+    const goal = vec[goalIdx] < 0.25 ? -1 : goalIdx;
+    const opIdx = argmaxIn(GN, GN + NOPS);
+    const op = vec[GN + opIdx] < 0.25 ? OP_NONE : opIdx;
+    const aIdx = argmaxIn(GN + NOPS, GN + NOPS + AN);
+    const bIdx = argmaxIn(GN + NOPS + AN, DIM);
+    return [goal, op,
+            vec[GN + NOPS + aIdx] < 0.25 ? -1 : aIdx,
+            vec[GN + NOPS + AN + bIdx] < 0.25 ? -1 : bIdx];
+}
+
+const goalLabel = (gl) => gl < 0 ? '∅' : GOALS[gl];
+const valLabel = (v) => v < 0 ? '·' : v;
+
+// ---- training / evaluation ----
+
+function trainModel() {
+    const vig = +document.getElementById('vigilance').value;
+    const lr = +document.getElementById('lr').value;
+    const gain = +document.getElementById('gain').value;
+    const excl = +document.getElementById('excludeB').value;
+    const passes = +document.getElementById('passes').value;
+
+    state.model = new ARTModuloModel(vig, lr, gain,
+        document.getElementById('forceOpMatch').checked,
+        document.getElementById('ctxFallback').checked);
+    const trainCheckOnSkip = document.getElementById('trainCheckOnSkip').checked;
+    const examples = [];
+    // Modulo curriculum: comparisons (check) on every modulus per the
+    // toggle, DECISIONS (> → sub, < → done) only on non-skipped moduli.
+    // No mod sub states are trained at all — subtraction is always the
+    // arithmetic facts' job.
+    for (let b = 1; b <= BMAX; b++) {
+        for (let a = 0; a <= 9; a++) {
+            if (b !== excl || trainCheckOnSkip) examples.push([G_MOD, OP_CHECK, a, b]);
+            if (b !== excl) {
+                examples.push([G_MOD, a >= b ? OP_GT : OP_LT, a, b]);
+                if (a >= b) examples.push([G_MOD, OP_SUB, a, b]);
+            }
+        }
+    }
+    // Arithmetic curriculum: every addition and every in-range subtraction,
+    // ALL moduli included — the next operator is nothing (one-shot compute).
+    for (let b = 0; b <= BMAX; b++) {
+        for (let a = 0; a <= 9; a++) {
+            examples.push([G_ARITH, OP_ADD, a, b]);
+            if (a >= b) examples.push([G_ARITH, OP_SUB, a, b]);
+        }
+    }
+    let trained = 0;
+    for (let p = 0; p < passes; p++) {
+        d3.shuffle(examples);
+        for (const [gl, op, a, b] of examples) { state.model.train(gl, op, a, b); trained++; }
+    }
+    document.getElementById('statHubs').textContent = state.model.templates.length;
+    document.getElementById('statPairs').textContent = trained;
+
+    evaluateAll(excl);
+    runToDone();
+}
+
+function simulate(goal, a0, b0, maxSteps = 48, startOp = OP_CHECK) {
+    const m = state.model;
+    const steps = [{ goal, op: startOp, a: a0, b: b0, recall: null }];
+    const seen = new Set([`${goal},${startOp},${a0},${b0}`]);
+    while (steps.length <= maxSteps) {
+        const cur = steps[steps.length - 1];
+        if (cur.op === OP_DONE || cur.op === OP_NONE) break;
+        const r = m.recall(cur.goal, cur.op, cur.a, cur.b);
+        if (!r) break;  // no eligible hub for this operator
+        const nxt = { goal: r.nextGoal, op: r.nextOp, a: r.nextA, b: r.nextB };
+        cur.recallOut = r;
+        steps.push(nxt);
+        const key = `${nxt.goal},${nxt.op},${nxt.a},${nxt.b}`;
+        if (nxt.op !== OP_DONE && nxt.op !== OP_NONE && seen.has(key)) { nxt.loop = true; break; }
+        seen.add(key);
+    }
+    const last = steps[steps.length - 1];
+    let finished, correct;
+    if (goal === G_ARITH) {
+        const truth = startOp === OP_ADD ? a0 + b0 : startOp === OP_SUB ? a0 - b0 : a0;
+        finished = last.op === OP_NONE;
+        correct = finished && last.a === truth && last.b === b0;
+    } else {
+        finished = last.op === OP_DONE;
+        correct = finished && b0 > 0 && last.a === a0 % b0 && last.b === b0;
+    }
+    return { steps, finished, correct, loop: !!last.loop };
+}
+
+function evaluateAll(excl) {
+    state.evals = [];
+    let tOk = 0, tN = 0, hOk = 0, hN = 0;
+    for (let a = 0; a <= 9; a++) {
+        for (let b = 0; b <= BMAX; b++) {
+            if (b === 0) {
+                state.evals.push({ a, b, final: null, correct: false, held: false, undef: true });
+                continue;
+            }
+            const sim = simulate(G_MOD, a, b);
+            const last = sim.steps[sim.steps.length - 1];
+            const held = (b === excl);
+            state.evals.push({ a, b, final: sim.finished ? last.a : null,
+                               correct: sim.correct, held, undef: false,
+                               timeout: !sim.finished });
+            if (held) { hOk += sim.correct; hN++; } else { tOk += sim.correct; tN++; }
+        }
+    }
+    document.getElementById('statTrainAcc').textContent = `${tOk}/${tN}`;
+    document.getElementById('statHoldAcc').textContent = hN ? `${hOk}/${hN}` : 'n/a';
+    // Arithmetic goal: score every trained one-shot fact.
+    let aOk = 0, aN = 0;
+    for (let b = 0; b <= BMAX; b++) {
+        for (let a = 0; a <= 9; a++) {
+            for (const op of [OP_ADD, OP_SUB]) {
+                if (op === OP_SUB && a < b) continue;
+                const r = state.model.recall(G_ARITH, op, a, b);
+                const truth = op === OP_ADD ? a + b : a - b;
+                aOk += (r.nextOp === OP_NONE && r.nextA === truth && r.nextB === b);
+                aN++;
+            }
+        }
+    }
+    document.getElementById('statArithAcc').textContent = `${aOk}/${aN}`;
+    const checkToo = document.getElementById('trainCheckOnSkip').checked;
+    document.getElementById('evalNote').textContent = excl >= 0
+        ? `Outlined column: mod ${excl} — ${checkToo ? 'only check steps trained, no sub steps' : 'never trained at all'}. B=0 is undefined. × = never reached done.`
+        : 'All moduli trained. B=0 is undefined. × = never reached done.';
+    drawEvalGrid();
+}
+
+// ---- trajectory UI ----
+
+function testInputs() {
+    return {
+        goal: +document.getElementById('testGoal').value,
+        a: Math.min(AMAX, Math.max(0, +document.getElementById('testA').value)),
+        b: Math.min(BMAX, Math.max(0, +document.getElementById('testB').value)),
+        startOp: +document.getElementById('testStartOp').value,
+    };
+}
+
+function runToDone() {
+    if (!state.model) return;
+    const { goal, a, b, startOp } = testInputs();
+    const sim = simulate(goal, a, b, 48, startOp);
+    state.steps = sim.steps;
+    renderTrajectory(goal, a, b, startOp, sim);
+    showStep(Math.max(0, sim.steps.length - 2));
+}
+
+function stepOnce() {
+    if (!state.model) return;
+    // Continue from the last live state, or start fresh from the inputs.
+    let cur;
+    const lastStep = state.steps[state.steps.length - 1];
+    if (state.steps.length && lastStep.op !== OP_DONE && lastStep.op !== OP_NONE && !lastStep.loop) {
+        cur = lastStep;
+    } else {
+        const { goal, a, b, startOp } = testInputs();
+        state.steps = [{ goal, op: startOp, a, b }];
+        cur = state.steps[0];
+    }
+    if (cur.op === OP_DONE || cur.op === OP_NONE) return;
+    const r = state.model.recall(cur.goal, cur.op, cur.a, cur.b);
+    if (!r) return;
+    cur.recallOut = r;
+    state.steps.push({ goal: r.nextGoal, op: r.nextOp, a: r.nextA, b: r.nextB });
+    const s0 = state.steps[0];
+    const last = state.steps[state.steps.length - 1];
+    const finished = s0.goal === G_ARITH ? last.op === OP_NONE : last.op === OP_DONE;
+    const truth = s0.goal === G_ARITH
+        ? (s0.op === OP_ADD ? s0.a + s0.b : s0.a - s0.b)
+        : (s0.b > 0 ? s0.a % s0.b : null);
+    renderTrajectory(s0.goal, s0.a, s0.b, s0.op, {
+        steps: state.steps,
+        finished,
+        correct: finished && last.a === truth && last.b === s0.b,
+        loop: false,
+    });
+    showStep(state.steps.length - 2);
+}
+
+function renderTrajectory(goal, a0, b0, startOp, sim) {
+    const list = document.getElementById('trajList');
+    list.innerHTML = '';
+    sim.steps.forEach((s, i) => {
+        const div = document.createElement('div');
+        const opClass = (s.op === OP_DONE || s.op === OP_NONE) ? 'op-done'
+            : s.op === OP_SUB ? 'op-sub'
+            : (s.op === OP_CHECK || s.op === OP_GT || s.op === OP_LT) ? 'op-check' : 'op-add';
+        div.className = 'traj-step' + (s.loop ? ' bad' : '');
+        div.innerHTML = `<span style="color: var(--text-muted)">${GOALS[s.goal]}</span> ` +
+            `<span class="${opClass}">${opLabel(s.op)}</span> ${s.a}, ${s.b}` +
+            (s.loop ? ' (loop!)' : '');
+        div.onclick = () => showStep(Math.min(i, sim.steps.length - 2));
+        list.appendChild(div);
+    });
+    const v = document.getElementById('trajVerdict');
+    const last = sim.steps[sim.steps.length - 1];
+    const exprName = goal === G_ARITH
+        ? `${a0} ${opLabel(startOp)} ${b0}`
+        : `${a0} mod ${b0}`;
+    const truth = goal === G_ARITH
+        ? (startOp === OP_ADD ? a0 + b0 : startOp === OP_SUB ? a0 - b0 : a0)
+        : (b0 > 0 ? a0 % b0 : null);
+    if (!sim.finished) {
+        v.style.color = '#f87171';
+        v.textContent = sim.loop ? `stuck in a loop — true answer ${truth}` :
+            `never halted — true answer ${truth}`;
+    } else if (sim.correct) {
+        v.style.color = css('--success');
+        v.textContent = `${exprName} = ${last.a} ✓`;
+    } else {
+        v.style.color = '#f87171';
+        v.textContent = `halted, but says ${last.a} — true answer ${truth}`;
+    }
+}
+
+// Render the recall that produced step index -> index+1.
+function showStep(i) {
+    if (i < 0 || i >= state.steps.length) return;
+    state.activeStep = i;
+    state.probing = null;
+    document.querySelectorAll('.traj-step').forEach((el, k) =>
+        el.classList.toggle('active', k === i));
+    const s = state.steps[i];
+    const live = s.op !== OP_DONE && s.op !== OP_NONE;
+    const r = s.recallOut || (live ? state.model.recall(s.goal, s.op, s.a, s.b) : null);
+    s.recallOut = r;
+    const excl = +document.getElementById('excludeB').value;
+
+    document.getElementById('recallLabel').textContent =
+        `${GOALS[s.goal]} ${opLabel(s.op)} ${s.a}, ${s.b}`;
+    if (!r) {
+        document.getElementById('recallChips').innerHTML = live
+            ? '<span class="outcome-chip fail">no eligible hub</span>'
+            : '<span class="outcome-chip success">terminal state</span>';
+        document.getElementById('recallInfo').innerHTML = live
+            ? 'no hub carries this operator — recall is empty under the hard match constraint.'
+            : 'halted — nothing to recall.';
+        return;
+    }
+    const truthNext = trueNext(s.goal, s.op, s.a, s.b);
+    const okStep = r.nextGoal === truthNext.goal && r.nextOp === truthNext.op
+        && r.nextA === truthNext.a && r.nextB === truthNext.b;
+    document.getElementById('recallChips').innerHTML =
+        (okStep ? '<span class="outcome-chip success">correct step</span>'
+                : '<span class="outcome-chip fail">wrong step</span>') +
+        (r.resonant ? '' : '<span class="outcome-chip novel">no resonant hub</span>');
+    document.getElementById('recallInfo').innerHTML =
+        `predicted next: <strong>${GOALS[r.nextGoal]} ${opLabel(r.nextOp)} ${r.nextA}, ${r.nextB}</strong><br>` +
+        `true next: <strong>${GOALS[truthNext.goal]} ${opLabel(truthNext.op)} ${truthNext.a}, ${truthNext.b}</strong><br>` +
+        `best hub similarity <strong>${r.bestSim.toFixed(3)}</strong>` +
+        (s.goal === G_MOD && s.b === excl
+            ? '<br><span style="color: var(--accent-soft)">mod ' + excl + ' sub steps were never trained</span>' : '');
+    drawNetwork(s, r);
+}
+
+// ---- drawing ----
+
+function poolGeometry() {
+    const glX = (gl) => 50 + gl * 44;
+    const opX = (o) => 180 + o * 40;
+    const aX = (a) => 430 + a * 30;
+    const bX = (b) => 1040 + b * 30;
+    return { glX, opX, aX, bX };
+}
+
+function hubLayout(nHubs) {
+    const perRow = 25;
+    const rows = Math.max(1, Math.ceil(nHubs / perRow));
+    const rowY = (row) => (LH / 2 - (rows - 1) * 21) + row * 42;
+    const pos = (h) => {
+        const row = Math.floor(h / perRow);
+        const inRow = (row === rows - 1) ? nHubs - row * perRow : perRow;
+        const x0 = LW / 2 - (inRow - 1) * 40 / 2;
+        return { x: x0 + (h - row * perRow) * 40, y: rowY(row) };
+    };
+    return { rows, rowY, pos };
+}
+
+const curve = (x1, y1, x2, y2) =>
+    `M ${x1} ${y1} C ${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`;
+
+// Shared pool-row renderer. activeState: [goal, op, a, b] (-1/OP_NONE = none lit).
+function drawPools(y, title, activeState, isOutput) {
+    const accent = css('--accent');
+    const bgCard = css('--bg-card') || '#1e293b';
+    const border = css('--border-mid') || '#334155';
+    const { glX, opX, aX, bX } = poolGeometry();
+    const plates = [
+        [title + ' GOAL', glX(0) - 22, (GN - 1) * 44 + 44],
+        [title + ' OP', opX(0) - 22, (NOPS - 1) * 40 + 44],
+        [title + ' A', aX(0) - 22, 18 * 30 + 44],
+        [title + ' B', bX(0) - 22, BMAX * 30 + 44],
+    ];
+    for (const [label, x, w] of plates) {
+        g.append('rect')
+            .attr('x', x).attr('y', y - 26)
+            .attr('width', w).attr('height', 52)
+            .attr('rx', 12)
+            .attr('fill', 'rgba(148, 163, 184, 0.04)')
+            .attr('stroke', css('--border-soft') || '#1e293b');
+        g.append('text').attr('class', 'pool-label')
+            .attr('x', x + 6).attr('y', y + (isOutput ? 44 : -34)).text(label);
+    }
+    const nodes = [];
+    for (let gl = 0; gl < GN; gl++) nodes.push({ x: glX(gl), key: ['goal', gl], on: activeState[0] === gl, lbl: GOALS[gl] });
+    for (let o = 0; o < NOPS; o++) nodes.push({ x: opX(o), key: ['op', o], on: activeState[1] === o, lbl: OPS[o] });
+    for (let a = 0; a <= AMAX; a++) nodes.push({ x: aX(a), key: ['a', a], on: activeState[2] === a, lbl: a, r: 13 });
+    for (let b = 0; b <= BMAX; b++) nodes.push({ x: bX(b), key: ['b', b], on: activeState[3] === b, lbl: b, r: 13 });
+    for (const nd of nodes) {
+        const c = g.append('circle')
+            .attr('cx', nd.x).attr('cy', y).attr('r', nd.r || 14)
+            .attr('fill', nd.on ? accent : bgCard)
+            .attr('stroke', nd.on ? css('--accent-soft') : border)
+            .attr('stroke-width', nd.on ? 2 : 1);
+        if (!isOutput) {
+            c.attr('class', 'input-node')
+                .on('click', (ev) => {
+                    if (ev.shiftKey) showInfluence(nd.key[0], nd.key[1]);
+                    else clickStateUnit(nd.key[0], nd.key[1]);
+                })
+                .on('mousemove', (ev) => showTip(ev,
+                    `${nd.key[0] === 'goal' ? 'goal' : nd.key[0] === 'op' ? 'operator' : nd.key[0].toUpperCase()} = ${nd.lbl}`,
+                    'click: set this pool to this value (others stay)<br>' +
+                    'click the active unit: switch this pool off (partial cue)<br>' +
+                    'shift-click: trace which hubs this unit feeds'))
+                .on('mouseleave', hideTip);
+        }
+        g.append('text').attr('class', 'io-digit')
+            .attr('x', nd.x).attr('y', y + 3.5)
+            .attr('fill', nd.on ? '#082f49' : '#94a3b8')
+            .text(nd.lbl);
+    }
+}
+
+function drawNetwork(s, r) {
+    const m = state.model;
+    g.selectAll('*').remove();
+    const accent = css('--accent');
+    const bgCard = css('--bg-card') || '#1e293b';
+    const border = css('--border-mid') || '#334155';
+    const inputY = 70, outY = LH - 70;
+    const { glX, opX, aX, bX } = poolGeometry();
+
+    const nHubs = m.templates.length;
+    const { rowY: hubRowY, pos: hubPos } = hubLayout(nHubs);
+
+    const linkLayer = g.append('g');
+
+    const tops = (arr) => {
+        const mx = arr.length ? d3.max(arr) : 0;
+        return arr.map((act, h) => ({ act, h }))
+            .filter(d => d.act >= Math.max(0.02, 0.5 * mx))
+            .sort((p, q) => q.act - p.act)
+            .slice(0, 24);
+    };
+    const factTops = tops(r.acts);
+    const ctrlTops = tops(r.ctrlActs || []);
+    const srcXs = [];
+    if (s.goal >= 0) srcXs.push(glX(s.goal));
+    if (s.op >= 0) srcXs.push(opX(s.op));
+    if (s.a >= 0) srcXs.push(aX(s.a));
+    if (s.b >= 0) srcXs.push(bX(s.b));
+    const outLink = (hp, x, act) => linkLayer.append('path').attr('class', 'net-link')
+        .attr('d', curve(hp.x, hp.y + 9, x, outY - 16))
+        .attr('stroke', accent)
+        .attr('stroke-width', 0.8 + 3.5 * act)
+        .attr('opacity', 0.2 + 0.65 * act);
+    const inputDrawn = new Set();
+    const inLinks = ({ act, h }) => {
+        if (inputDrawn.has(h)) return;
+        inputDrawn.add(h);
+        const hp = hubPos(h);
+        for (const x of srcXs) {
+            linkLayer.append('path').attr('class', 'net-link')
+                .attr('d', curve(x, inputY + 14, hp.x, hp.y - 9))
+                .attr('stroke', accent)
+                .attr('stroke-width', 0.8 + 3.5 * act)
+                .attr('opacity', 0.2 + 0.65 * act);
+        }
+    };
+    // FACT winners (goal-free electorate) vote the operands.
+    for (const d of factTops) {
+        inLinks(d);
+        const hp = hubPos(d.h);
+        const [wg, , wa, wb] = decodeState(m.outW[d.h]);
+        if (wa >= 0) outLink(hp, aX(wa), d.act);
+        if (wb >= 0) outLink(hp, bX(wb), d.act);
+        if (wg >= 0) outLink(hp, glX(wg), d.act);
+    }
+    // CONTROL winners (same-goal electorate) vote the next op.
+    for (const d of ctrlTops) {
+        inLinks(d);
+        const hp = hubPos(d.h);
+        const [, wo] = decodeState(m.outW[d.h]);
+        if (wo !== OP_NONE) outLink(hp, opX(wo), d.act);
+    }
+
+    // Dashed carriers: values that reached the NEXT row by persistence or
+    // by the goal's policy rather than by memory votes — without these,
+    // lit output nodes would have no incoming line at all.
+    const silent = (s0, e0) => {
+        let mx = 0;
+        for (let i = s0; i < e0; i++) mx = Math.max(mx, r.output[i]);
+        return mx < 0.25;
+    };
+    const dashTo = (x1, x2) => linkLayer.append('path').attr('class', 'net-link')
+        .attr('d', curve(x1, inputY + 14, x2, outY - 16))
+        .attr('stroke', '#64748b').attr('stroke-width', 1.2)
+        .attr('stroke-dasharray', '5,5').attr('opacity', 0.55);
+    if (s.goal >= 0 && r.nextGoal >= 0 && silent(0, GN)) dashTo(glX(s.goal), glX(r.nextGoal));
+    if (s.a >= 0 && r.nextA >= 0 && silent(GN + NOPS, GN + NOPS + AN)) dashTo(aX(s.a), aX(r.nextA));
+    if (s.b >= 0 && r.nextB >= 0 && silent(GN + NOPS + AN, DIM)) dashTo(bX(s.b), bX(r.nextB));
+    // A policy-filled op flows from the GOAL node — the goal supplies it.
+    if (s.goal >= 0 && r.opFromPolicy) dashTo(glX(s.goal), opX(r.nextOp));
+
+    drawPools(inputY, 'STATE', [s.goal, s.op, s.a, s.b], false);
+    drawPools(outY, 'NEXT', [r.nextGoal, r.nextOp, r.nextA, r.nextB], true);
+
+    // hubs — colored by the stronger of their two roles (fact vs control)
+    const dispActs = m.templates.map((_, h) =>
+        Math.max(r.acts[h], (r.ctrlActs && r.ctrlActs[h]) || 0));
+    const topSet = new Set([...factTops, ...ctrlTops].map(d => d.h));
+    const color = d3.scaleLinear().domain([0, Math.max(0.15, d3.max(dispActs))])
+        .range([bgCard, accent]).clamp(true);
+    g.append('text').attr('class', 'pool-label')
+        .attr('x', LW / 2).attr('y', hubRowY(0) - 26)
+        .attr('text-anchor', 'middle')
+        .text(`TRANSITION HUBS (${nHubs})`);
+    m.templates.forEach((t, h) => {
+        const hp = hubPos(h);
+        const isTop = topSet.has(h);
+        g.append('circle')
+            .attr('cx', hp.x).attr('cy', hp.y).attr('r', 9)
+            .attr('fill', color(dispActs[h]))
+            .attr('stroke', isTop ? css('--accent-soft') : border)
+            .attr('stroke-width', isTop ? 2 : 1)
+            .on('mousemove', (ev) => {
+                const [wg, wo, wa, wb] = decodeState(m.outW[h]);
+                showTip(ev, `Hub — ${m.members[h].join(', ')}`,
+                    `next state: <strong>${goalLabel(wg)} ${opLabel(wo)} ${valLabel(wa)}, ${valLabel(wb)}</strong><br>` +
+                    `similarity to probe: ${r.sims[h].toFixed(3)}<br>` +
+                    `activation — fact: ${r.acts[h].toFixed(3)} · control: ${((r.ctrlActs && r.ctrlActs[h]) || 0).toFixed(3)}`);
+            })
+            .on('mouseleave', hideTip);
+    });
+}
+
+// Click a state unit: change only that pool's value, keep the rest, rerun.
+// Clicking the currently ACTIVE unit instead switches its whole pool off
+// and shows the partial-cue recall.
+function clickStateUnit(kind, v) {
+    if (!state.model) return;
+    const cur = state.steps[state.activeStep];
+    if (cur) {
+        const curVal = kind === 'goal' ? cur.goal : kind === 'op' ? cur.op
+            : kind === 'a' ? cur.a : cur.b;
+        if (curVal === v) {
+            if (state.probing === kind) {  // second click restores the pool
+                state.probing = null;
+                showStep(state.activeStep);
+            } else {
+                probeWithout(cur, kind);
+            }
+            return;
+        }
+    }
+    state.probing = null;
+    if (kind === 'goal') document.getElementById('testGoal').value = v;
+    else if (kind === 'op') {
+        if (v === OP_DONE) return;  // can't start from a terminal state
+        document.getElementById('testStartOp').value = v;
+    }
+    else if (kind === 'a') document.getElementById('testA').value = v;
+    else document.getElementById('testB').value = v;
+
+    const { goal, a, b, startOp } = testInputs();
+    const sim = simulate(goal, a, b, 48, startOp);
+    state.steps = sim.steps;
+    renderTrajectory(goal, a, b, startOp, sim);
+    showStep(0);  // show the clicked state's own recall, not the last step's
+}
+
+// Partial-cue probe: the same state with one pool switched off entirely.
+function probeWithout(cur, kind) {
+    state.probing = kind;
+    const s = { goal: cur.goal, op: cur.op, a: cur.a, b: cur.b };
+    s[kind] = kind === 'op' ? OP_NONE : -1;
+    const r = state.model.recall(s.goal, s.op, s.a, s.b);
+    document.getElementById('recallLabel').textContent =
+        `${goalLabel(s.goal)} ${opLabel(s.op)} ${valLabel(s.a)}, ${valLabel(s.b)}`;
+    document.getElementById('recallChips').innerHTML =
+        '<span class="outcome-chip novel">partial cue — pool switched off</span>';
+    if (!r) {
+        document.getElementById('recallInfo').innerHTML = 'nothing to match on.';
+        return;
+    }
+    document.getElementById('recallInfo').innerHTML =
+        `predicted next: <strong>${goalLabel(r.nextGoal)} ${opLabel(r.nextOp)} ${valLabel(r.nextA)}, ${valLabel(r.nextB)}</strong><br>` +
+        `best hub similarity <strong>${r.bestSim.toFixed(3)}</strong><br>` +
+        `<span style="color: var(--text-muted)">click any node in the dark pool to restore it</span>`;
+    drawNetwork(s, r);
+}
+
+// ---- influence view: shift-click a state unit to trace what it feeds ----
+
+function unitIndex(kind, v) {
+    if (kind === 'goal') return v;
+    if (kind === 'op') return GN + v;
+    if (kind === 'a') return GN + NOPS + v;
+    return GN + NOPS + AN + v;
+}
+
+function showInfluence(kind, v) {
+    const m = state.model;
+    if (!m) return;
+    const unit = unitIndex(kind, v);
+    const hubs = [];
+    m.templates.forEach((t, h) => { if (t[unit] > 0.3) hubs.push(h); });
+    drawInfluence(kind, v, hubs);
+
+    const kindName = kind === 'goal' ? `goal ${GOALS[v]}` : kind === 'op' ? `op ${OPS[v]}`
+        : `${kind.toUpperCase()} = ${v}`;
+    document.getElementById('recallLabel').textContent = `influence of ${kindName}`;
+    document.getElementById('recallChips').innerHTML =
+        '<span class="outcome-chip novel">influence view</span>';
+    if (!hubs.length) {
+        document.getElementById('recallInfo').innerHTML =
+            `this unit appears in <strong>no hub template</strong> — it never fires downstream.`;
+        return;
+    }
+    const opCounts = {}, aVals = new Set(), bVals = new Set();
+    for (const h of hubs) {
+        const [, wo, wa, wb] = decodeState(m.outW[h]);
+        opCounts[opLabel(wo)] = (opCounts[opLabel(wo)] || 0) + 1;
+        aVals.add(valLabel(wa)); bVals.add(valLabel(wb));
+    }
+    const opsTxt = Object.entries(opCounts).map(([o, n]) => `${o}×${n}`).join(' ');
+    const fmt = (set) => [...set].sort((x, y) => x - y).join(', ');
+    document.getElementById('recallInfo').innerHTML =
+        `feeds <strong>${hubs.length}</strong> hub${hubs.length > 1 ? 's' : ''}<br>` +
+        `their next ops: <strong>${opsTxt}</strong><br>` +
+        `next A values: <strong>${fmt(aVals)}</strong><br>` +
+        `next B values: <strong>${fmt(bVals)}</strong><br>` +
+        `<span style="color: var(--text-muted)">hover a highlighted hub for detail; run a test to return</span>`;
+}
+
+function drawInfluence(kind, v, hubs) {
+    const m = state.model;
+    g.selectAll('*').remove();
+    const accent = css('--accent');
+    const bgCard = css('--bg-card') || '#1e293b';
+    const border = css('--border-mid') || '#334155';
+    const inputY = 70, outY = LH - 70;
+    const { glX, opX, aX, bX } = poolGeometry();
+    const srcX = kind === 'goal' ? glX(v) : kind === 'op' ? opX(v) : kind === 'a' ? aX(v) : bX(v);
+
+    const nHubs = m.templates.length;
+    const { rowY: hubRowY, pos: hubPos } = hubLayout(nHubs);
+    const linkLayer = g.append('g');
+    const hubSet = new Set(hubs);
+    const outUnits = new Map();  // "kind:value" -> { x, small }
+
+    for (const h of hubs) {
+        const hp = hubPos(h);
+        linkLayer.append('path').attr('class', 'net-link')
+            .attr('d', curve(srcX, inputY + 14, hp.x, hp.y - 9))
+            .attr('stroke', accent).attr('stroke-width', 1.2).attr('opacity', 0.35);
+        const [wg, wo, wa, wb] = decodeState(m.outW[h]);
+        const outs = [];
+        if (wa >= 0) outs.push(['a', wa, aX(wa), true]);
+        if (wb >= 0) outs.push(['b', wb, bX(wb), true]);
+        if (wg >= 0) outs.push(['goal', wg, glX(wg), false]);
+        if (wo !== OP_NONE) outs.push(['op', wo, opX(wo), false]);
+        for (const [ok, ov, x, small] of outs) {
+            outUnits.set(`${ok}:${ov}`, { x, small });
+            linkLayer.append('path').attr('class', 'net-link')
+                .attr('d', curve(hp.x, hp.y + 9, x, outY - 16))
+                .attr('stroke', accent).attr('stroke-width', 1).attr('opacity', 0.22);
+        }
+    }
+
+    // input row: only the clicked unit lit
+    const activeIn = [
+        kind === 'goal' ? v : -1,
+        kind === 'op' ? v : OP_NONE,
+        kind === 'a' ? v : -1,
+        kind === 'b' ? v : -1,
+    ];
+    drawPools(inputY, 'STATE', activeIn, false);
+    drawPools(outY, 'NEXT', [-1, OP_NONE, -1, -1], true);
+
+    // ring every output unit that receives at least one vote
+    for (const { x, small } of outUnits.values()) {
+        g.append('circle')
+            .attr('cx', x).attr('cy', outY).attr('r', (small ? 13 : 14) + 2.5)
+            .attr('fill', 'none')
+            .attr('stroke', css('--accent-soft')).attr('stroke-width', 1.5)
+            .attr('opacity', 0.8);
+    }
+
+    // hubs: affected ones lit
+    g.append('text').attr('class', 'pool-label')
+        .attr('x', LW / 2).attr('y', hubRowY(0) - 26)
+        .attr('text-anchor', 'middle')
+        .text(`TRANSITION HUBS (${nHubs}) — ${hubs.length} fed by this unit`);
+    m.templates.forEach((t, h) => {
+        const hp = hubPos(h);
+        const on = hubSet.has(h);
+        g.append('circle')
+            .attr('cx', hp.x).attr('cy', hp.y).attr('r', 9)
+            .attr('fill', on ? accent : bgCard)
+            .attr('stroke', on ? css('--accent-soft') : border)
+            .attr('stroke-width', on ? 2 : 1)
+            .attr('opacity', on ? 1 : 0.55)
+            .on('mousemove', (ev) => {
+                const [wg, wo, wa, wb] = decodeState(m.outW[h]);
+                showTip(ev, `Hub — ${m.members[h].join(', ')}`,
+                    `next state: <strong>${goalLabel(wg)} ${opLabel(wo)} ${valLabel(wa)}, ${valLabel(wb)}</strong>` +
+                    (on ? '' : '<br><em>not fed by the selected unit</em>'));
+            })
+            .on('mouseleave', hideTip);
+    });
+}
+
+// ---- eval grid ----
+
+function toggleEvalSize() {
+    state.evalExpanded = !state.evalExpanded;
+    document.getElementById('evalToggle').textContent = state.evalExpanded ? 'shrink ⤡' : 'expand ⤢';
+    drawEvalGrid();
+}
+
+function drawEvalGrid() {
+    const cell = state.evalExpanded ? 36 : 24;
+    const x0 = 34, y0 = 14;
+    const W = x0 + BN * cell + 6, H = y0 + 10 * cell + 4;
+    const svgE = d3.select('#evalSvg').attr('width', W).attr('height', H);
+    svgE.selectAll('*').remove();
+    // Keep the card no wider than the grid itself.
+    document.getElementById('evalNote').style.maxWidth = W + 'px';
+
+    for (let b = 0; b <= BMAX; b++) {
+        svgE.append('text')
+            .attr('x', x0 + b * cell + cell / 2).attr('y', y0 - 4)
+            .attr('text-anchor', 'middle').attr('font-size', 8.5).attr('fill', '#94a3b8')
+            .text(`B${b}`);
+    }
+    for (let a = 0; a <= 9; a++) {
+        svgE.append('text')
+            .attr('x', x0 - 12).attr('y', y0 + a * cell + cell / 2 + 3)
+            .attr('text-anchor', 'middle').attr('font-size', 8.5).attr('fill', '#94a3b8')
+            .text(`A${a}`);
+    }
+    for (const e of state.evals) {
+        const gx = x0 + e.b * cell, gy = y0 + e.a * cell;
+        const fill = e.undef ? 'rgba(148, 163, 184, 0.06)'
+            : e.correct ? 'rgba(34, 197, 94, 0.18)' : 'rgba(239, 68, 68, 0.16)';
+        svgE.append('rect')
+            .attr('class', 'eval-cell')
+            .attr('x', gx + 1).attr('y', gy + 1)
+            .attr('width', cell - 2).attr('height', cell - 2)
+            .attr('rx', 4)
+            .attr('fill', fill)
+            .attr('stroke', e.held ? css('--accent') : 'none')
+            .attr('stroke-width', e.held ? 1.2 : 0)
+            .on('click', () => {
+                if (e.undef) return;
+                // The grid always scores modulo trajectories — force the
+                // test controls to match so the click reruns the same thing.
+                document.getElementById('testGoal').value = G_MOD;
+                document.getElementById('testStartOp').value = OP_CHECK;
+                document.getElementById('testA').value = e.a;
+                document.getElementById('testB').value = e.b;
+                runToDone();
+            })
+            .on('mousemove', (ev) => {
+                if (e.undef) { showTip(ev, `${e.a} mod 0`, 'undefined — not trained, not scored'); return; }
+                showTip(ev, `${e.a} mod ${e.b} = ${e.a % e.b}`,
+                    `model's final remainder: <strong>${e.final === null ? 'never done' : e.final}</strong><br>` +
+                    (e.held ? 'held out (never trained)' : 'trained modulus') +
+                    '<br>click to run this trajectory');
+            })
+            .on('mouseleave', hideTip);
+        svgE.append('text')
+            .attr('x', gx + cell / 2).attr('y', gy + cell / 2 + 3.5)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', state.evalExpanded ? 12 : 9.5).attr('font-weight', 600)
+            .attr('fill', e.undef ? '#64748b' : e.correct ? css('--success') : '#f87171')
+            .attr('pointer-events', 'none')
+            .text(e.undef ? '–' : (e.final === null ? '×' : e.final));
+    }
+}
+
+// ---- init ----
+setupZoom();
+trainModel();
+</script>
+<script src="/nav.js"></script>
+</body>
+</html>
