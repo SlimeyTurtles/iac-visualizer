@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Atlas — Action Selection</title>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        :root {
+            --accent: #e8794f;          /* brain atlas uses coral */
+            --accent-dark: #c75a33;
+            --accent-glow: rgba(232, 121, 79, 0.2);
+            --accent-soft: #f29b78;
+        }
+
+        /* ---- sidebar content ---- */
+        #sidebar { width: 380px; }
+        #sidebar > * { flex-shrink: 0; }
+        .systems { display: flex; flex-direction: column; gap: 2px; }
+        .sys { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--radius-md); cursor: pointer; border: 1px solid transparent; }
+        .sys:hover { background: var(--bg-card); }
+        .sys[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); }
+        .sys .sw { width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.3); }
+        .sys .nm { font-weight: 500; font-size: 0.85rem; color: var(--text-strong); }
+        .sys .role { display: block; color: var(--text-muted); font-size: 0.75rem; font-weight: 400; }
+        .sys.off .sw { opacity: 0.25; }
+        .sys.off .nm, .sys.off .role { color: var(--text-dim); text-decoration: line-through; }
+        .eye { border: 0; background: transparent; width: 26px; height: 26px; border-radius: var(--radius-md); cursor: pointer; color: var(--text-muted); display: grid; place-items: center; }
+        .eye:hover { background: var(--border-mid); color: var(--text-strong); }
+        .eye:focus-visible, .sys:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        .card { background: var(--bg-card); border-radius: var(--radius-lg); padding: 14px; min-height: 120px; }
+        .card h3 { font-size: 1.05rem; margin: 0 0 2px; color: var(--text-strong); line-height: 1.2; }
+        .card .tag { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .card .tag i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+        .card p { margin: 0 0 8px; font-size: 0.8rem; line-height: 1.45; }
+        .card p:last-child { margin-bottom: 0; }
+        .card .ref { color: var(--text-dim); font-size: 0.72rem; }
+        .card .members { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+        .card .members button { border: 1px solid var(--border-mid); background: var(--bg-card-2); color: var(--text-default); border-radius: 999px; font-size: 0.7rem; padding: 2px 8px; cursor: pointer; }
+        .card .members button:hover { border-color: var(--accent); }
+        .hint { color: var(--text-dim); font-size: 0.72rem; margin: 0; line-height: 1.45; }
+
+        .controls { display: grid; gap: 10px; }
+        .row { display: grid; grid-template-columns: 110px minmax(0,1fr) 48px; align-items: center; gap: 10px; font-size: 0.75rem; }
+        .row label { color: var(--text-muted); }
+        .row output { font-family: ui-monospace, Consolas, monospace; font-size: 0.7rem; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+        .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+        .btn { border: 1px solid var(--border-mid); background: var(--bg-card); color: var(--text-default); border-radius: var(--radius-md); padding: 5px 10px; font-size: 0.75rem; cursor: pointer; }
+        .btn:hover { border-color: var(--accent); }
+        .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+        .steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 0.75rem; }
+        .steps li { display: grid; grid-template-columns: 18px minmax(0,1fr); gap: 8px; padding: 5px 8px; border-radius: var(--radius-md); background: var(--bg-card); border: 1px solid var(--border-soft); align-items: start; cursor: pointer; }
+        .steps li.active, .steps li:hover { border-color: var(--accent); }
+        .steps b { font-family: ui-monospace, Consolas, monospace; font-weight: 500; color: var(--text-dim); font-size: 0.7rem; padding-top: 2px; }
+        .steps .kind { font-size: 0.6rem; letter-spacing: 0.04em; text-transform: uppercase; padding: 0 5px; border-radius: 3px; margin-left: 4px; color: #fff; }
+        .k-exc { background: #2f8f5b; } .k-inh { background: #b43c3c; } .k-da { background: #c58a1a; }
+
+        /* ---- viewport ---- */
+        #viz-container { background: var(--bg-app); }
+        #c { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+        .overlay { position: absolute; left: 16px; top: 16px; display: flex; gap: 6px; flex-wrap: wrap; z-index: 50; }
+        .readout { position: absolute; right: 16px; bottom: 16px; font-family: ui-monospace, Consolas, monospace; font-size: 0.7rem; color: var(--text-muted); background: var(--bg-panel); border: 1px solid var(--border-soft); padding: 4px 8px; border-radius: var(--radius-md); pointer-events: none; }
+        .compass { position: absolute; left: 16px; bottom: 16px; font-family: ui-monospace, Consolas, monospace; font-size: 0.7rem; color: var(--text-dim); pointer-events: none; }
+        .tip { position: absolute; pointer-events: none; background: var(--bg-card); color: var(--text-strong); border: 1px solid var(--border-mid); border-radius: var(--radius-md); padding: 5px 9px; font-size: 0.75rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transform: translate(12px, 12px); white-space: nowrap; z-index: 60; }
+        .tip small { display: block; color: var(--text-muted); font-size: 0.65rem; }
+        .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); font-size: 0.8rem; background: var(--bg-app); z-index: 40; }
+        .loading .bar { width: 160px; height: 3px; background: var(--border-mid); border-radius: 2px; overflow: hidden; margin-top: 10px; }
+        .loading .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+        [hidden] { display: none !important; }
+
+        @media (max-width: 860px) {
+            body { flex-direction: column; height: auto; overflow: auto; }
+            #sidebar { width: 100%; order: 1; border-right: 0; border-top: 1px solid var(--border-soft); }
+            #main-container { order: 0; height: 58vh; flex-grow: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>Brain Atlas</h2>
+    <p class="subtitle">Real cortical and subcortical anatomy in MNI space, colored by the roles each system plays in planning, selecting, and gating actions. Cortex: fsaverage5 pial + Desikan parcellation (ENIGMA toolbox). Deep nuclei, brainstem, cerebellum: Allen Human Reference Atlas 3D (2020).</p>
+
+    <div class="section-header">Functional systems · click to inspect, eye to hide</div>
+    <div class="systems" id="systems"></div>
+
+    <div class="card" id="card" aria-live="polite">
+        <h3>Hover or click a structure</h3>
+        <div class="tag">drag to orbit · scroll to zoom · right-drag to pan</div>
+        <p>Cut the cortex away with the slider below to reach the basal ganglia and thalamus.</p>
+    </div>
+
+    <div class="section-header">View</div>
+    <div class="controls">
+        <div class="row"><label for="cut">Cortex cut-away</label><input id="cut" type="range" min="-72" max="72" step="1" value="72"><output id="cutv">off</output></div>
+        <div class="row"><label for="opacity">Cortex opacity</label><input id="opacity" type="range" min="0" max="1" step="0.05" value="1"><output id="opv">1.00</output></div>
+        <div class="row"><label for="deepop">Deep structures</label><input id="deepop" type="range" min="0" max="1" step="0.05" value="1"><output id="deepv">1.00</output></div>
+        <div class="btns" id="views">
+            <button class="btn" data-view="left">Left lateral</button>
+            <button class="btn" data-view="right">Right lateral</button>
+            <button class="btn" data-view="front">Anterior</button>
+            <button class="btn" data-view="top">Superior</button>
+            <button class="btn" data-view="medial">Medial cut</button>
+            <button class="btn" data-view="deep">Deep nuclei</button>
+        </div>
+        <div class="btns">
+            <button class="btn" id="toggleL" aria-pressed="true">Left hemisphere</button>
+            <button class="btn" id="toggleR" aria-pressed="true">Right hemisphere</button>
+            <button class="btn" id="spin" aria-pressed="false">Auto-rotate</button>
+            <button class="btn" id="reset">Reset</button>
+        </div>
+    </div>
+
+    <div class="section-header">Trace a basal ganglia pathway</div>
+    <div class="btns" id="pathbtns">
+        <button class="btn" data-path="direct">Direct (Go)</button>
+        <button class="btn" data-path="indirect">Indirect (NoGo)</button>
+        <button class="btn" data-path="hyperdirect">Hyperdirect (Stop)</button>
+        <button class="btn" data-path="dopamine">Dopamine</button>
+        <button class="btn" data-path="hippo">Planning inputs</button>
+    </div>
+    <ol class="steps" id="steps"></ol>
+    <p class="hint" id="pathhint">Pathways are drawn between structure centroids in the left hemisphere. Green = excitatory, red = inhibitory, amber = dopaminergic modulation.</p>
+
+    <div class="section-header">Caveats</div>
+    <p class="hint">Functional groupings follow the discussion they illustrate: an abstraction over overlapping, recurrent circuits, not exclusive storage locations. The thalamus is drawn as a translucent whole with six nuclei inside. The VTA is not segmented in this atlas, so dopamine is shown from the substantia nigra only. The SMA / pre-SMA vs. medial PFC split of the superior frontal gyrus is a y = 0 cut.</p>
+</div>
+
+<div id="main-container">
+    <div id="viz-container">
+        <canvas id="c" tabindex="0" aria-label="3D brain viewer"></canvas>
+        <div class="overlay"><button class="btn" id="clearsel">Clear selection</button><button class="btn" id="isolate" aria-pressed="false">Isolate system</button></div>
+        <div class="readout" id="readout"></div>
+        <div class="tip" id="tip" hidden></div>
+        <div class="compass" id="compass">A ↑ anterior · L / R as labeled</div>
+        <div class="loading" id="loading"><div>loading meshes<div class="bar"><i id="lbar"></i></div></div></div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+'use strict';
+// ------------------------------------------------------------------ systems
+const SYSTEMS = [
+  { key:'pfc', name:'Prefrontal cortex', color:'#3b6fd6', role:'Goals, rules, task context, outcome evaluation',
+    text:['Represents goals, rules, task representations and the expected outcomes of candidate actions; the source of cognitive control that biases competition elsewhere.','In the dinner example it holds the goal (eat) and the plan skeleton (store → cook → eat) while other systems fill in and gate the steps.'],
+    ref:'Verschure et al. 2019; Halassa & Kastner 2017' },
+  { key:'ofc', name:'Orbitofrontal cortex', color:'#7a5ad8', role:'Cognitive map of hidden task state',
+    text:['Carries abstract task-state representations that cannot be read from current sensory input alone: two moments can look identical yet call for different actions depending on what happened earlier.','Schuck et al. (2016) decoded which hidden task state participants occupied from OFC activity patterns.'],
+    ref:'Schuck et al. 2016, Human OFC represents a cognitive map of state space' },
+  { key:'premotor', name:'Premotor / SMA', color:'#2a9d8f', role:'Movement preparation, action sequences, affordance competition',
+    text:['Premotor, supplementary and pre-supplementary motor areas prepare candidate movements and learned action sequences.','In Cisek\'s affordance competition hypothesis, several potential actions are specified here in parallel and compete, with prefrontal and basal ganglia signals biasing the outcome.'],
+    ref:'Cisek 2007, Cortical mechanisms of action selection' },
+  { key:'m1', name:'Primary motor cortex', color:'#1f7a4f', role:'Motor commands and learned movement patterns',
+    text:['The precentral gyrus issues descending motor commands once a candidate action wins. Together with the cerebellum and spinal circuits it turns a selected action into coordinated muscle activity.'],
+    ref:'' },
+  { key:'ppc', name:'Posterior parietal cortex', color:'#e0a21b', role:'Affordances and sensorimotor state estimation',
+    text:['Represents which actions are currently possible given objects, body position and sensory information, and the relationship between body and environment: how far the hand is from the cup, whether it can be reached without standing.','This is the sensorimotor side of the "current state", distinct from the hippocampal relational state and the prefrontal task state.'],
+    ref:'Medendorp & Heed 2019, State estimation in posterior parietal cortex' },
+  { key:'sensory', name:'Primary sensory cortex', color:'#b9ad8e', role:'Visual, auditory and somatosensory input',
+    text:['Primary visual (pericalcarine, cuneus, lingual, lateral occipital), auditory (transverse and superior temporal) and somatosensory (postcentral) cortex supply the current sensory evidence that the rest of the system interprets.','Each receives its input through a first-order thalamic relay: LGN, MGN and the ventral posterior nuclei respectively.'],
+    ref:'' },
+  { key:'assoc', name:'Temporal association cortex', color:'#d87c3b', role:'Object knowledge and semantic memory',
+    text:['Inferior and middle temporal, fusiform and temporal pole cortex hold object knowledge: what a cup is, independent of how to grasp it. This is the "what" half of the picture, which the parietal affordance system complements with "how".'],
+    ref:'' },
+  { key:'hippo', name:'Hippocampal system', color:'#d64570', role:'Cognitive maps, episodic memory, prospective simulation',
+    text:['Hippocampus with entorhinal and parahippocampal cortex represents relationships among states (I am in the bedroom; the kitchen is down the hall) and retrieves past experiences such as the bottle being empty last time.','It supports simulating possible future states, which makes it a strong candidate substrate for a transition model T(s, a) → s\' in a planning network. It is not a register of the complete current state.'],
+    ref:'' },
+  { key:'striatum', name:'Striatum', color:'#e05b4a', role:'Basal ganglia input: learned situation → action → outcome associations',
+    text:['Caudate, putamen and nucleus accumbens receive massive cortical projections. Distinct striatal ensembles are associated with distinct actions (Klaus et al. 2017), but as learned, distributed population patterns rather than an explicit index of actions.','Associative territories (caudate) support goal-directed action–outcome learning; sensorimotor territories (putamen) support habitual stimulus–response control. Li & Jin (2023) showed manipulating specific striatal neurons causally changes behavioral choices.'],
+    ref:'Klaus et al. 2017; Balleine & O\'Doherty 2010; Li & Jin 2023' },
+  { key:'pallidum', name:'Globus pallidus', color:'#9b2f3c', role:'GPi: tonic inhibitory output · GPe: indirect-pathway relay',
+    text:['The internal segment (GPi), with the substantia nigra pars reticulata, is the basal ganglia output. It tonically inhibits thalamic targets; selection works by disinhibition, when striatal input quiets the GPi channel for the chosen action.','The external segment (GPe) sits in the indirect pathway: striatum ⊣ GPe ⊣ STN → GPi, which raises inhibition on competing actions. Humphries (2025) examines the computational bottleneck this narrow output imposes.'],
+    ref:'Redgrave, Prescott & Gurney 1999; Humphries 2025' },
+  { key:'stn', name:'Subthalamic nucleus', color:'#f0742e', role:'Hyperdirect pathway: rapid global stop',
+    text:['Receives direct cortical input and excites GPi/SNr, rapidly increasing output inhibition so that actions can be paused or stopped. It is also a node of the indirect pathway.'],
+    ref:'' },
+  { key:'sn', name:'Substantia nigra', color:'#c58a1a', role:'SNr: output nucleus · SNc: dopamine teaching signal',
+    text:['Pars reticulata is a second output nucleus alongside GPi. Pars compacta supplies dopamine to the striatum: when an outcome is better than predicted, dopamine strengthens the corticostriatal associations that produced it; worse-than-predicted outcomes drive different adjustments.','Dopamine also shapes action initiation and vigor. It is not simply a pleasure signal.'],
+    ref:'Schultz 2016 (Annual Reviews); Graybiel 2025 review' },
+  { key:'thalamus', name:'Thalamus', color:'#4aa3c7', role:'Relay and gating; not a unified world model',
+    text:['Not one processing center but many nuclei with different connectivity. VA/VL receive basal ganglia output and relay the released motor circuit back to cortex. The mediodorsal nucleus works with prefrontal cortex in cognitive control and working memory, sustaining and amplifying task-relevant prefrontal representations rather than building an independent state representation.','LGN, MGN and VPL/VPM are sensory relays; the pulvinar participates in attention and cortico-cortical communication.'],
+    ref:'Halassa & Kastner 2017, Thalamic functions in distributed cognitive control' },
+  { key:'motiv', name:'Motivation and value', color:'#b85c9e', role:'Amygdala and hypothalamus: drive and emotional value',
+    text:['Hypothalamic drive states (thirst, hunger) and amygdala value signals are the motivational input that gives a goal its urgency, feeding prefrontal goal representations and ventral striatal selection.'],
+    ref:'' },
+  { key:'cerebellum', name:'Cerebellum', color:'#8aa84f', role:'Predictive motor control and coordination',
+    text:['Forward models, coordination and learned adjustments that make a selected movement accurate. Operates downstream of selection, in parallel with the cortico-basal ganglia loop.'],
+    ref:'' },
+  { key:'brainstem', name:'Brainstem', color:'#7f8a99', role:'Descending motor output and arousal',
+    text:['Midbrain, pons and medulla carry descending motor pathways, house the colliculi (orienting), and the neuromodulatory nuclei that set arousal. The midbrain also contains the substantia nigra and red nucleus, drawn separately.'],
+    ref:'' },
+  { key:'other', name:'Other cortex', color:'#aab2bd', role:'Insula, posterior cingulate, medial wall',
+    text:['Regions not assigned a role in this discussion: insula (interoception, salience), posterior and isthmus cingulate (default-mode / memory), and the medial wall where the hemisphere meets the corpus callosum.'],
+    ref:'' },
+];
+const SYS = Object.fromEntries(SYSTEMS.map(s => [s.key, s]));
+
+// mesh group key -> system + optional region note
+const REGION = {
+  rostralmiddlefrontal:['pfc','Dorsolateral prefrontal cortex: working memory and rule maintenance.'],
+  superiorfrontal_ant:['pfc','Medial and dorsal prefrontal cortex anterior to the SMA.'],
+  parstriangularis:['pfc','Ventrolateral prefrontal cortex.'], parsorbitalis:['pfc','Ventrolateral prefrontal cortex.'],
+  frontalpole:['pfc','Most anterior prefrontal cortex; abstract, multi-step goal management.'],
+  rostralanteriorcingulate:['pfc','Anterior cingulate: effort, conflict and outcome monitoring.'], caudalanteriorcingulate:['pfc','Anterior cingulate: conflict monitoring and action valuation.'],
+  lateralorbitofrontal:['ofc',''], medialorbitofrontal:['ofc','Medial OFC / ventromedial PFC: value of outcomes and task state.'],
+  caudalmiddlefrontal:['premotor','Dorsal premotor cortex and frontal eye fields.'],
+  superiorfrontal_post:['premotor','Supplementary and pre-supplementary motor area: sequencing and initiation.'],
+  parsopercularis:['premotor','Ventral premotor cortex (Broca area in the left hemisphere).'],
+  precentral:['m1',''], paracentral:['m1','Medial M1/S1: leg and foot representation.'],
+  superiorparietal:['ppc','Reach and eye-movement planning; body-centered state estimation.'], inferiorparietal:['ppc','Angular gyrus region: multimodal integration.'],
+  supramarginal:['ppc','Grasp affordances and tool use.'], precuneus:['ppc','Medial parietal cortex: visuospatial imagery and self-referential processing.'],
+  postcentral:['sensory','Primary somatosensory cortex (S1).'], pericalcarine:['sensory','Primary visual cortex (V1).'], cuneus:['sensory','Early visual cortex.'],
+  lateraloccipital:['sensory','Extrastriate visual cortex, object vision.'], lingual:['sensory','Early visual cortex.'],
+  transversetemporal:['sensory','Primary auditory cortex (A1).'], superiortemporal:['sensory','Auditory association cortex.'],
+  middletemporal:['assoc',''], inferiortemporal:['assoc','Ventral stream object representations.'], fusiform:['assoc','Faces, objects, words.'], bankssts:['assoc',''], temporalpole:['assoc','Semantic hub.'],
+  parahippocampal:['hippo','Scene and spatial context; gateway to hippocampus.'], entorhinal:['hippo','Grid cells; main cortical input to the hippocampus.'],
+  hippocampus:['hippo','Place cells, episodic memory, sequence replay and prospective simulation.'],
+  caudate:['striatum','Associative striatum: goal-directed action–outcome learning; loops with prefrontal cortex.'],
+  putamen:['striatum','Sensorimotor striatum: habits and stimulus–response control; loops with motor and premotor cortex.'],
+  accumbens:['striatum','Ventral striatum: reward-related selection and motivation; dopamine target of the VTA.'],
+  gpe:['pallidum','Indirect pathway relay.'], gpi:['pallidum','Output nucleus: tonic inhibition of VA/VL thalamus, released by direct-pathway input.'],
+  stn:['stn',''], sn:['sn',''],
+  thal_other:['thalamus','Whole thalamus (translucent). Six nuclei are drawn inside.'],
+  thal_md:['thalamus','Mediodorsal nucleus: prefrontal partner in cognitive control, working memory and decision-making.'],
+  thal_vavl:['thalamus','Ventral anterior / ventral lateral: receives GPi, SNr and cerebellar output; relays to premotor and motor cortex. The return leg of the action-selection loop.'],
+  thal_pulv:['thalamus','Pulvinar: attention and communication between cortical areas.'],
+  thal_vp:['thalamus','Ventral posterior nuclei: somatosensory relay to S1.'],
+  thal_lgn:['thalamus','Lateral geniculate: visual relay to V1.'], thal_mgn:['thalamus','Medial geniculate: auditory relay to A1.'],
+  amygdala:['motiv','Emotional value, threat and reward learning.'], hypothalamus:['motiv','Homeostatic drives: hunger, thirst, temperature.'],
+  cerebellum:['cerebellum',''], midbrain:['brainstem','Colliculi, red nucleus, tegmentum, cerebral peduncles.'], pons:['brainstem',''], medulla:['brainstem',''],
+  insula:['other',''], posteriorcingulate:['other',''], isthmuscingulate:['other',''], unknown:['other',''], corpuscallosum:['other',''],
+};
+
+// pathways: nodes are mesh ids; kind exc/inh/da
+const PATHS = {
+  direct: { title:'Direct pathway (Go)', steps:[
+    ['Cortex represents the intended action', 'ctx_superiorfrontal_post_L', 'putamen_L', 'exc', 'Premotor / SMA → striatum (glutamate)'],
+    ['Striatum activates the selected action channel', 'putamen_L', 'gpi_L', 'inh', 'Striatum ⊣ GPi (GABA)'],
+    ['Output inhibition on that channel drops', 'gpi_L', 'thal_vavl_L', 'inh', 'GPi ⊣ VA/VL thalamus, now reduced'],
+    ['Released thalamus facilitates the selected motor circuit', 'thal_vavl_L', 'ctx_precentral_L', 'exc', 'VA/VL → premotor and motor cortex'] ] },
+  indirect: { title:'Indirect pathway (NoGo)', steps:[
+    ['Cortex excites striatal NoGo neurons', 'ctx_superiorfrontal_post_L', 'putamen_L', 'exc', 'Cortex → striatum (D2 population)'],
+    ['Striatum inhibits GPe', 'putamen_L', 'gpe_L', 'inh', 'Striatum ⊣ GPe'],
+    ['GPe stops inhibiting STN', 'gpe_L', 'stn_L', 'inh', 'GPe ⊣ STN, now reduced'],
+    ['STN drives GPi harder', 'stn_L', 'gpi_L', 'exc', 'STN → GPi (glutamate)'],
+    ['Competing channels are suppressed at the thalamus', 'gpi_L', 'thal_vavl_L', 'inh', 'GPi ⊣ VA/VL, increased'] ] },
+  hyperdirect: { title:'Hyperdirect pathway (Stop)', steps:[
+    ['Cortex projects straight to STN, bypassing striatum', 'ctx_parsopercularis_L', 'stn_L', 'exc', 'Cortex → STN (fast)'],
+    ['STN broadly excites the output nuclei', 'stn_L', 'gpi_L', 'exc', 'STN → GPi / SNr'],
+    ['Global brake on thalamocortical motor circuits', 'gpi_L', 'thal_vavl_L', 'inh', 'GPi ⊣ thalamus, increased'] ] },
+  dopamine: { title:'Dopamine teaching signal', steps:[
+    ['Better-than-predicted outcome: SNc dopamine burst', 'sn_L', 'putamen_L', 'da', 'SNc → dorsal striatum (nigrostriatal)'],
+    ['Caudate receives the same modulation', 'sn_L', 'caudate_L', 'da', 'SNc → caudate'],
+    ['Corticostriatal synapses that produced the action are strengthened', 'ctx_superiorfrontal_post_L', 'putamen_L', 'exc', 'Plasticity at the cortex → striatum synapse'] ] },
+  hippo: { title:'Planning inputs to the loop', steps:[
+    ['Prefrontal cortex holds the goal and task rules', 'ctx_rostralmiddlefrontal_L', 'caudate_L', 'exc', 'PFC → associative striatum'],
+    ['Hippocampus supplies relational state and simulated futures', 'hippocampus_L', 'accumbens_L', 'exc', 'Hippocampus → ventral striatum'],
+    ['OFC supplies the hidden task state', 'ctx_medialorbitofrontal_L', 'accumbens_L', 'exc', 'OFC → ventral striatum'],
+    ['Parietal cortex supplies available affordances', 'ctx_superiorparietal_L', 'putamen_L', 'exc', 'PPC → premotor loop'],
+    ['MD thalamus sustains prefrontal task representations', 'thal_md_L', 'ctx_rostralmiddlefrontal_L', 'exc', 'MD ⇄ PFC'] ] },
+};
+const KIND_HEX = { exc:'#2f8f5b', inh:'#b43c3c', da:'#c58a1a' };
+
+// ------------------------------------------------------------------ three setup
+const canvas = document.getElementById('c'), stage = document.getElementById('viz-container');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.localClippingEnabled = true;
+renderer.outputEncoding = THREE.sRGBEncoding;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
+scene.add(camera);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x6f7a88, 0.45); scene.add(hemi);
+const key = new THREE.DirectionalLight(0xffffff, 1.0); key.position.set(0.6, 0.8, 1.0); camera.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.3); fill.position.set(-1, -0.3, 0.4); camera.add(fill);
+const brain = new THREE.Group(); brain.rotation.x = -Math.PI / 2; scene.add(brain);  // anatomical RAS -> y-up
+const pathGroup = new THREE.Group(); brain.add(pathGroup);
+
+// --- canvas background from theme.css
+function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+renderer.setClearColor(new THREE.Color(cssVar('--bg-app') || '#0a0f1a'), 1);
+
+// --- minimal orbit controls (rotate / wheel zoom / pan / pinch)
+const ctrl = { target: new THREE.Vector3(0, 10, 0), theta: -1.2, phi: 1.35, dist: 420, auto: false };
+const ptrs = new Map(); let lastPinch = 0, lastMid = null, dragged = false;
+function updateCamera() {
+  ctrl.phi = Math.max(0.05, Math.min(Math.PI - 0.05, ctrl.phi)); ctrl.dist = Math.max(60, Math.min(1200, ctrl.dist));
+  const sp = Math.sin(ctrl.phi);
+  camera.position.set(ctrl.target.x + ctrl.dist * sp * Math.sin(ctrl.theta), ctrl.target.y + ctrl.dist * Math.cos(ctrl.phi), ctrl.target.z + ctrl.dist * sp * Math.cos(ctrl.theta));
+  camera.lookAt(ctrl.target);
+}
+function pan(dx, dy) {
+  const s = ctrl.dist * 0.0018;
+  const right = new THREE.Vector3(), up = new THREE.Vector3();
+  camera.matrixWorld.extractBasis(right, up, new THREE.Vector3());
+  ctrl.target.addScaledVector(right, -dx * s).addScaledVector(up, dy * s);
+}
+canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, b: e.button }); dragged = false; if (ptrs.size === 2) { const a = [...ptrs.values()]; lastPinch = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); lastMid = { x: (a[0].x + a[1].x) / 2, y: (a[0].y + a[1].y) / 2 }; } });
+canvas.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) { hoverAt(e); return; }
+  const p = ptrs.get(e.pointerId); const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (Math.abs(dx) + Math.abs(dy) > 2) dragged = true;
+  if (ptrs.size === 1) { if (p.b === 2 || e.shiftKey) pan(dx, dy); else { ctrl.theta -= dx * 0.006; ctrl.phi -= dy * 0.006; } }
+  else if (ptrs.size === 2) { const a = [...ptrs.values()]; const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); const mid = { x: (a[0].x + a[1].x) / 2, y: (a[0].y + a[1].y) / 2 }; if (lastPinch) ctrl.dist *= lastPinch / d; if (lastMid) pan(mid.x - lastMid.x, mid.y - lastMid.y); lastPinch = d; lastMid = mid; }
+  updateCamera(); hideTip();
+});
+function endPtr(e) { ptrs.delete(e.pointerId); lastPinch = 0; lastMid = null; }
+canvas.addEventListener('pointerup', e => { endPtr(e); if (!dragged && e.button === 0) clickAt(e); });
+canvas.addEventListener('pointercancel', endPtr); canvas.addEventListener('pointerleave', e => { if (!ptrs.has(e.pointerId)) hideTip(); });
+canvas.addEventListener('wheel', e => { e.preventDefault(); ctrl.dist *= Math.exp(e.deltaY * 0.0012); updateCamera(); }, { passive: false });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('keydown', e => { const k = e.key; if (k === 'ArrowLeft') ctrl.theta += 0.1; else if (k === 'ArrowRight') ctrl.theta -= 0.1; else if (k === 'ArrowUp') ctrl.phi -= 0.1; else if (k === 'ArrowDown') ctrl.phi += 0.1; else if (k === '+' || k === '=') ctrl.dist *= 0.9; else if (k === '-') ctrl.dist *= 1.1; else return; e.preventDefault(); updateCamera(); });
+
+function resize() { const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(stage); resize(); updateCamera();
+
+// ------------------------------------------------------------------ data
+// A "part" is one selectable structure: a deep nucleus mesh, or one cortical parcel (a face group inside the hemisphere mesh).
+const parts = [], byId = {}, pickables = [], cortexMeshes = [];
+const state = { hidden: new Set(), selectedSys: null, selectedPart: null, isolate: false, cut: 72, ctxOp: 1, deepOp: 1, showL: true, showR: true, path: null };
+const clipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 72);
+const lbar = document.getElementById('lbar');
+function sysOf(group) { const r = REGION[group]; return r ? SYS[r[0]] : SYS.other; }
+const lin = hex => new THREE.Color(hex).convertSRGBToLinear();
+const DIM = lin('#6b7280'), DIMCTX = lin('#7c8591');
+
+Promise.all([fetch('/brain_atlas_mesh.json').then(r => r.json()), fetchProgress('/brain_atlas_mesh.bin')]).then(([man, buf]) => {
+  const S = man.scale;
+  for (const e of man.meshes) {
+    const pos = new Int16Array(buf, e.pos[0], e.pos[1] / 2), nrm = new Int8Array(buf, e.nrm[0], e.nrm[1]);
+    const idx = e.itype === 'u2' ? new Uint16Array(buf, e.idx[0], e.idx[1] / 2) : new Uint32Array(buf, e.idx[0], e.idx[1] / 4);
+    const P = new Float32Array(pos.length), N = new Float32Array(nrm.length);
+    for (let i = 0; i < pos.length; i++) { P[i] = pos[i] * S; N[i] = nrm[i] / 127; }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeBoundingSphere();
+    if (e.kind === 'cortex') {
+      const vreg = new Uint8Array(buf, e.vreg[0], e.vreg[1]);
+      const col = new Float32Array(P.length); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const mats = [], regionParts = [];
+      e.regions.forEach((r, ri) => {
+        g.addGroup(r.start * 3, r.count * 3, ri);
+        const sys = sysOf(r.key);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.62, metalness: 0, side: THREE.FrontSide, clippingPlanes: [clipPlane] });
+        mats.push(mat);
+        const part = { id: `ctx_${r.key}_${e.side}`, group: r.key, side: e.side, name: r.name, kind: 'cortex', centroid: r.centroid, sys, base: lin(sys.color), note: (REGION[r.key] || ['', ''])[1], mat, ri, isCtx: true, isShell: false, display: new THREE.Color() };
+        parts.push(part); byId[part.id] = part; regionParts.push(part);
+      });
+      const m = new THREE.Mesh(g, mats); m.userData = { cortex: true, side: e.side, vreg, regionParts, col };
+      m.renderOrder = 2; brain.add(m); pickables.push(m); cortexMeshes.push(m);
+    } else {
+      const sys = sysOf(e.group); const isShell = e.group === 'thal_other';
+      const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, transparent: isShell, opacity: isShell ? 0.28 : 1, depthWrite: !isShell, side: THREE.FrontSide });
+      const m = new THREE.Mesh(g, mat); m.renderOrder = isShell ? 3 : 1;
+      const part = { id: e.id, group: e.group, side: e.side, name: e.name, kind: 'deep', centroid: e.centroid, sys, base: lin(sys.color), note: (REGION[e.group] || ['', ''])[1], mat, mesh: m, isCtx: false, isShell };
+      m.userData = { part }; parts.push(part); byId[part.id] = part; brain.add(m); if (!isShell) pickables.push(m);
+    }
+  }
+  document.getElementById('loading').hidden = true;
+  buildSystems(); applyVisibility(); updateReadout();
+}).catch(err => { document.getElementById('loading').textContent = 'Could not load mesh data: ' + err.message; });
+
+function fetchProgress(url) {
+  return fetch(url).then(async r => {
+    if (!r.ok) throw new Error(r.status + ' ' + url);
+    const total = +r.headers.get('content-length') || 0; const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+    if (!reader) return r.arrayBuffer();
+    const chunks = []; let got = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); got += value.length; if (total) lbar.style.width = Math.round(100 * got / total) + '%'; }
+    const out = new Uint8Array(got); let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; } return out.buffer;
+  });
+}
+
+// ------------------------------------------------------------------ visibility & styling
+function partVisible(p) {
+  if (state.hidden.has(p.sys.key)) return false;
+  if (p.side === 'L' && !state.showL) return false; if (p.side === 'R' && !state.showR) return false;
+  if (state.isolate && state.selectedSys && p.sys.key !== state.selectedSys) return false;
+  if (p.isCtx && state.ctxOp <= 0) return false;
+  if (!p.isCtx && state.deepOp <= 0) return false;
+  return true;
+}
+function applyVisibility() {
+  clipPlane.constant = state.cut;
+  const pathNodes = state.path ? new Set(PATHS[state.path].steps.flatMap(s => [s[1], s[2]])) : null;
+  const focusSys = state.selectedSys && !state.isolate;
+  const ctxOpacity = { L: state.ctxOp, R: state.ctxOp };
+  // when a deep system or a pathway is in focus, the whole cortex becomes a ghost so the inside is visible
+  const deepFocus = (focusSys && !SYSTEMS_CTX.has(state.selectedSys)) || !!pathNodes;
+  for (const p of parts) {
+    const mat = p.mat, vis = partVisible(p);
+    if (p.isCtx) mat.visible = vis; else p.mesh.visible = vis;
+    if (!vis) continue;
+    let op = p.isShell ? 0.28 : (p.isCtx ? state.ctxOp : state.deepOp);
+    let col = p.base, emis = 0;
+    const dim = (focusSys && p.sys.key !== state.selectedSys) || (pathNodes && !pathNodes.has(p.id));
+    if (dim) { col = p.isShell ? p.base : (p.isCtx ? DIMCTX : DIM); if (!p.isCtx) op = Math.min(op, 0.3); }
+    if (state.selectedPart === p) emis = 0.5; else if (hovered === p) emis = 0.25; else if (focusSys && p.sys.key === state.selectedSys) emis = 0.08;
+    if (pathNodes && pathNodes.has(p.id)) { if (!p.isCtx) op = 1; emis = Math.max(emis, 0.2); }
+    if (p.isCtx) {
+      p.display.copy(col);
+      if (deepFocus && dim) ctxOpacity[p.side] = Math.min(ctxOpacity[p.side], 0.14);
+      mat.emissive.copy(col).multiplyScalar(emis);
+    } else {
+      mat.color.copy(col); mat.emissive.copy(col).multiplyScalar(emis);
+      const tr = op < 0.999; mat.transparent = tr; mat.opacity = op; mat.depthWrite = !tr || (!p.isShell && op > 0.6);
+      p.mesh.renderOrder = tr ? 3 : 1;
+    }
+  }
+  for (const m of cortexMeshes) {
+    const op = ctxOpacity[m.userData.side], tr = op < 0.999;
+    for (const p of m.userData.regionParts) { p.mat.transparent = tr; p.mat.opacity = op; p.mat.depthWrite = !tr; }
+    m.renderOrder = tr ? 4 : 2;
+    const col = m.userData.col, vreg = m.userData.vreg, rp = m.userData.regionParts;
+    for (let i = 0; i < vreg.length; i++) { const c = rp[vreg[i]].display; col[3 * i] = c.r; col[3 * i + 1] = c.g; col[3 * i + 2] = c.b; }
+    m.geometry.attributes.color.needsUpdate = true;
+  }
+  updateReadout();
+}
+const SYSTEMS_CTX = new Set(['pfc', 'ofc', 'premotor', 'm1', 'ppc', 'sensory', 'assoc', 'other']);
+
+// ------------------------------------------------------------------ sidebar: systems
+const sysEl = document.getElementById('systems');
+function buildSystems() {
+  sysEl.innerHTML = '';
+  for (const s of SYSTEMS) {
+    const row = document.createElement('div'); row.className = 'sys'; row.tabIndex = 0; row.setAttribute('role', 'button'); row.setAttribute('aria-pressed', 'false'); row.dataset.key = s.key;
+    row.innerHTML = `<span class="sw" style="background:${s.color}"></span><span class="nm">${s.name}<span class="role">${s.role}</span></span><button class="eye" title="Show or hide ${s.name}" aria-label="Hide ${s.name}">${EYE}</button>`;
+    row.addEventListener('click', e => { if (e.target.closest('.eye')) { toggleHidden(s.key); return; } selectSystem(state.selectedSys === s.key ? null : s.key); });
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectSystem(state.selectedSys === s.key ? null : s.key); } });
+    sysEl.appendChild(row);
+  }
+  refreshSysRows();
+}
+const EYE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+function refreshSysRows() { for (const row of sysEl.children) { const k = row.dataset.key; row.classList.toggle('off', state.hidden.has(k)); row.setAttribute('aria-pressed', String(state.selectedSys === k)); } }
+function toggleHidden(k) { if (state.hidden.has(k)) state.hidden.delete(k); else state.hidden.add(k); refreshSysRows(); applyVisibility(); }
+function selectSystem(k) { state.selectedSys = k; state.selectedPart = null; if (!k) state.isolate = false; document.getElementById('isolate').setAttribute('aria-pressed', String(state.isolate)); refreshSysRows(); applyVisibility(); showSystemCard(k); }
+function selectPart(p) { state.selectedPart = p; state.selectedSys = p ? p.sys.key : null; if (!p) state.isolate = false; document.getElementById('isolate').setAttribute('aria-pressed', String(state.isolate)); refreshSysRows(); applyVisibility(); if (p) showPartCard(p); else showSystemCard(null); }
+
+// ------------------------------------------------------------------ cards
+const card = document.getElementById('card');
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function showSystemCard(k) {
+  if (!k) { card.innerHTML = '<h3>Hover or click a structure</h3><div class="tag">cortex: fsaverage5 pial · deep nuclei: Allen Human Reference Atlas</div><p>Drag to orbit, scroll to zoom, right-drag or two-finger drag to pan. Cut the cortex away with the slider below to reach the basal ganglia and thalamus.</p>'; return; }
+  const s = SYS[k]; const members = {}; for (const p of parts) if (p.sys.key === k) members[p.group] = p.name;
+  card.innerHTML = `<h3>${esc(s.name)}</h3><div class="tag"><i style="background:${s.color}"></i>${esc(s.role)}</div>` + s.text.map(t => `<p>${t}</p>`).join('') + (s.ref ? `<p class="ref">${esc(s.ref)}</p>` : '') +
+    `<div class="members">${Object.entries(members).map(([g, n]) => `<button data-group="${g}">${esc(n)}</button>`).join('')}</div>`;
+  card.querySelectorAll('.members button').forEach(b => b.addEventListener('click', () => { const p = parts.find(x => x.group === b.dataset.group && partVisible(x)) || parts.find(x => x.group === b.dataset.group); if (p) { selectPart(p); focusOn(p); } }));
+}
+function showPartCard(p) {
+  const s = p.sys; const side = p.side === 'L' ? 'left' : p.side === 'R' ? 'right' : 'midline';
+  const c = p.centroid.map(v => (v >= 0 ? '+' : '') + v.toFixed(0));
+  card.innerHTML = `<h3>${esc(p.name)}</h3><div class="tag"><i style="background:${s.color}"></i>${esc(s.name)} · ${side} · MNI ${c.join(', ')} mm</div>` +
+    (p.note ? `<p>${esc(p.note)}</p>` : '') + `<p>${s.text[0]}</p>` + (s.ref ? `<p class="ref">${esc(s.ref)}</p>` : '') +
+    `<div class="members"><button data-sys="${s.key}">All of ${esc(s.name)}</button></div>`;
+  card.querySelector('[data-sys]').addEventListener('click', () => selectSystem(s.key));
+}
+
+// ------------------------------------------------------------------ picking
+const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2(); let hovered = null, lastHover = 0;
+const tip = document.getElementById('tip');
+function pick(e) {
+  const r = canvas.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(pickables.filter(m => m.visible), false);
+  for (const h of hits) {
+    const u = h.object.userData;
+    if (u.cortex) {
+      const p = u.regionParts[h.face.materialIndex]; if (!p || !p.mat.visible || p.mat.opacity < 0.3) continue;
+      if (-h.point.x + clipPlane.constant < 0) continue;  // clipped away
+      return p;
+    }
+    const p = u.part; if (p.mat.opacity < 0.3) continue; return p;
+  }
+  return null;
+}
+function hoverAt(e) {
+  const now = performance.now(); if (now - lastHover < 40) return; lastHover = now;
+  const m = pick(e); if (m !== hovered) { hovered = m; applyVisibility(); }
+  if (m) { const r = stage.getBoundingClientRect(); tip.hidden = false; tip.innerHTML = `${esc(m.name)}<small>${esc(m.sys.name)}${m.side !== 'M' ? ' · ' + (m.side === 'L' ? 'left' : 'right') : ''}</small>`; let x = e.clientX - r.left, y = e.clientY - r.top; if (x > r.width - 220) x -= 240; if (y > r.height - 60) y -= 60; tip.style.left = x + 'px'; tip.style.top = y + 'px'; canvas.style.cursor = 'pointer'; } else hideTip();
+}
+function hideTip() { tip.hidden = true; canvas.style.cursor = ''; }
+function clickAt(e) { selectPart(pick(e)); }
+function focusOn(p) { const c = p.centroid; const v = new THREE.Vector3(c[0], c[1], c[2]).applyMatrix4(brain.matrixWorld); ctrl.target.copy(v); updateCamera(); }
+
+// ------------------------------------------------------------------ controls
+const $ = id => document.getElementById(id);
+$('cut').addEventListener('input', e => { state.cut = +e.target.value; $('cutv').textContent = state.cut >= 72 ? 'off' : (state.cut >= 0 ? '+' : '') + state.cut + ' mm'; applyVisibility(); });
+$('opacity').addEventListener('input', e => { state.ctxOp = +e.target.value; $('opv').textContent = state.ctxOp.toFixed(2); applyVisibility(); });
+$('deepop').addEventListener('input', e => { state.deepOp = +e.target.value; $('deepv').textContent = state.deepOp.toFixed(2); applyVisibility(); });
+$('toggleL').addEventListener('click', e => { state.showL = !state.showL; e.currentTarget.setAttribute('aria-pressed', String(state.showL)); applyVisibility(); });
+$('toggleR').addEventListener('click', e => { state.showR = !state.showR; e.currentTarget.setAttribute('aria-pressed', String(state.showR)); applyVisibility(); });
+$('spin').addEventListener('click', e => { ctrl.auto = !ctrl.auto; e.currentTarget.setAttribute('aria-pressed', String(ctrl.auto)); });
+$('clearsel').addEventListener('click', () => { selectPart(null); setPath(null); });
+$('isolate').addEventListener('click', e => { if (!state.selectedSys) return; state.isolate = !state.isolate; e.currentTarget.setAttribute('aria-pressed', String(state.isolate)); applyVisibility(); });
+$('reset').addEventListener('click', () => { setView('left'); state.cut = 72; state.ctxOp = 1; state.deepOp = 1; state.showL = state.showR = true; state.hidden.clear(); state.isolate = false; $('cut').value = 72; $('cutv').textContent = 'off'; $('opacity').value = 1; $('opv').textContent = '1.00'; $('deepop').value = 1; $('deepv').textContent = '1.00'; $('toggleL').setAttribute('aria-pressed', 'true'); $('toggleR').setAttribute('aria-pressed', 'true'); selectPart(null); setPath(null); refreshSysRows(); applyVisibility(); });
+const VIEWS = { // theta: around world Y (up); phi from +Y. world: x right, y up (superior), z posterior (-z anterior)
+  left: { theta: -Math.PI / 2, phi: 1.45, dist: 420, target: [0, 10, 0] }, right: { theta: Math.PI / 2, phi: 1.45, dist: 420, target: [0, 10, 0] },
+  front: { theta: Math.PI, phi: 1.45, dist: 420, target: [0, 10, 0] }, top: { theta: Math.PI, phi: 0.08, dist: 440, target: [0, 10, 0] },
+  medial: { theta: Math.PI / 2, phi: 1.5, dist: 360, target: [0, 5, 0] }, deep: { theta: -Math.PI / 2 + 0.6, phi: 1.2, dist: 330, target: [0, 0, 10] },
+};
+function setView(k) {
+  const v = VIEWS[k]; ctrl.theta = v.theta; ctrl.phi = v.phi; ctrl.dist = v.dist; ctrl.target.set(...v.target);
+  if (k === 'medial') { state.cut = 0; state.showR = false; state.showL = true; $('cut').value = 0; $('cutv').textContent = '+0 mm'; $('toggleR').setAttribute('aria-pressed', 'false'); $('toggleL').setAttribute('aria-pressed', 'true'); }
+  if (k === 'deep') { state.ctxOp = 0.12; $('opacity').value = 0.1; $('opv').textContent = '0.10'; state.ctxOp = 0.1; }
+  updateCamera(); applyVisibility();
+}
+document.querySelectorAll('#views [data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+
+// ------------------------------------------------------------------ pathways
+const stepsEl = $('steps'); let pulses = [];
+function setPath(k) {
+  state.path = k; while (pathGroup.children.length) { const c = pathGroup.children.pop(); c.geometry && c.geometry.dispose(); c.material && c.material.dispose(); } pulses = [];
+  document.querySelectorAll('#pathbtns [data-path]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.path === k)));
+  stepsEl.innerHTML = '';
+  if (!k) { applyVisibility(); return; }
+  const P = PATHS[k];
+  if (state.ctxOp > 0.5) { state.ctxOp = 0.35; $('opacity').value = 0.35; $('opv').textContent = '0.35'; }
+  P.steps.forEach((s, i) => {
+    const a = byId[s[1]], b = byId[s[2]]; if (!a || !b) return;
+    const pa = new THREE.Vector3(...a.centroid), pb = new THREE.Vector3(...b.centroid);
+    if (a.isCtx) pa.addScaledVector(pa.clone().sub(new THREE.Vector3(0, -15, 10)).normalize(), -6); // nudge cortex endpoint inward
+    const mid = pa.clone().lerp(pb, 0.5); const away = mid.clone().sub(new THREE.Vector3(0, -10, 0)).normalize(); mid.addScaledVector(away, 10 + 0.08 * pa.distanceTo(pb)); mid.x -= 6;
+    const curve = new THREE.QuadraticBezierCurve3(pa, mid, pb);
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.9, 8, false), new THREE.MeshStandardMaterial({ color: lin(KIND_HEX[s[3]]), emissive: lin(KIND_HEX[s[3]]), emissiveIntensity: 0.35, roughness: 0.4 }));
+    tube.renderOrder = 5; pathGroup.add(tube);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(2.4, 6, 12), tube.material); const tEnd = 0.96; head.position.copy(curve.getPoint(tEnd)); head.lookAt(pb.clone().add(curve.getTangent(tEnd))); head.rotateX(Math.PI / 2); head.renderOrder = 5; pathGroup.add(head);
+    for (let j = 0; j < 3; j++) { const sph = new THREE.Mesh(new THREE.SphereGeometry(1.7, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffffff })); sph.renderOrder = 6; pathGroup.add(sph); pulses.push({ sph, curve, off: j / 3, i }); }
+    const li = document.createElement('li'); li.innerHTML = `<b>${i + 1}</b><span>${esc(s[0])}<span class="kind k-${s[3]}">${s[3] === 'exc' ? 'excites' : s[3] === 'inh' ? 'inhibits' : 'dopamine'}</span><br><span style="color:var(--muted)">${esc(s[4])}</span></span>`;
+    li.addEventListener('mouseenter', () => { li.classList.add('active'); }); li.addEventListener('mouseleave', () => li.classList.remove('active'));
+    li.addEventListener('click', () => { selectPart(b); focusOn(b); });
+    stepsEl.appendChild(li);
+  });
+  const t = document.createElement('li'); t.innerHTML = `<b>·</b><span><strong>${esc(P.title)}</strong>. Click a step to focus its target.</span>`; stepsEl.prepend(t);
+  applyVisibility();
+}
+document.querySelectorAll('#pathbtns [data-path]').forEach(b => b.addEventListener('click', () => setPath(state.path === b.dataset.path ? null : b.dataset.path)));
+
+// ------------------------------------------------------------------ readout & loop
+function updateReadout() { const n = parts.filter(partVisible).length; const r = $('readout'); r.textContent = state.selectedSys ? `${SYS[state.selectedSys].name}${state.isolate ? ' · isolated' : ''} · ${n} parts` : (parts.length ? `${n} of ${parts.length} structures shown` : ''); }
+const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let t0 = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop); const dt = (now - t0) / 1000; t0 = now;
+  if (ctrl.auto) { ctrl.theta += dt * 0.25; updateCamera(); }
+  if (pulses.length && !reduced) { const ph = (now / 1800) % 1; for (const p of pulses) { const u = (ph + p.off) % 1; p.sph.position.copy(p.curve.getPoint(u)); p.sph.material.opacity = 1; } }
+  else if (pulses.length) { for (const p of pulses) p.sph.position.copy(p.curve.getPoint(0.5 + 0.3 * (p.off - 0.33))); }
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+<script src="/nav.js"></script>
+</body>
+</html>

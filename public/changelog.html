@@ -116,6 +116,16 @@
 // { version, date, title, changes: [ ...strings, may contain <strong>/<code> ] }
 const CHANGELOG = [
     {
+        version: '0.14.0',
+        date: '2026-10-21',
+        title: 'Brain Atlas — anatomy behind the planning models',
+        changes: [
+            '<strong>Brain Atlas (Action Selection)</strong>: a Three.js page (<code>brain_atlas.html</code>) showing real anatomy in MNI space — the FreeSurfer fsaverage5 pial cortex with the Desikan-Killiany parcellation, and deep nuclei, brainstem and cerebellum isosurfaced from the Allen Human Reference Atlas 3D (2020). Structures are grouped into 17 functional systems from the action-selection literature (prefrontal goals, OFC task state, premotor affordance competition, parietal state estimation, hippocampal maps, striatum, GPe/GPi, STN, substantia nigra, six thalamic nuclei, cerebellum, brainstem) with per-system toggles, hover labels with MNI centroids, and info cards citing Cisek 2007, Schuck 2016, Redgrave et al. 1999, Halassa &amp; Kastner 2017 and others.',
+            '<strong>Exploration</strong>: orbit / zoom / pan, preset views, a sagittal cortex cut-away slider, cortex and deep-structure opacity, per-hemisphere toggles, “isolate system”, and animated pathway tracers for the direct (Go), indirect (NoGo), hyperdirect (Stop) and nigrostriatal dopamine loops plus the planning inputs (PFC, hippocampus, OFC, PPC, MD thalamus) drawn between structure centroids.',
+            '<strong>Data</strong>: meshes are preprocessed offline (marching cubes + Taubin smoothing, quantised to int16 positions / int8 normals) into <code>public/brain_atlas_mesh.bin</code> + <code>.json</code> (2.7 MB) and served statically — a binary bundle rather than an inlined JS literal because of its size. Allen label IDs resolve through structure graph 16. New “Reference” section in the nav and on the home page.',
+        ]
+    },
+    {
         version: '0.13.0',
         date: '2026-10-16',
         title: 'Action Graph — Hebbian credit on actions, not states',

@@ -24,6 +24,7 @@
         { href: '/synthetic_12_decay.html', label: 'Hierarchy Emergence (Corrupted + Decay)', section: 'Unsupervised' },
         { href: '/hierarchical_art.html', label: 'Forced Hierarchical ART', section: 'Unsupervised' },
         { href: '/escf.html', label: 'ESCF (Perception · Consequence · Goal)', section: 'Unsupervised' },
+        { href: '/brain_atlas.html', label: 'Brain Atlas (Action Selection)', section: 'Reference' },
         { href: '/changelog.html', label: 'Changelog', section: 'Site' },
     ];
 
