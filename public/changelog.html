@@ -116,6 +116,15 @@
 // { version, date, title, changes: [ ...strings, may contain <strong>/<code> ] }
 const CHANGELOG = [
     {
+        version: '0.15.1',
+        date: '2026-11-04',
+        title: 'Hubel & Wiesel — plainer look, obvious remove',
+        changes: [
+            '<strong>Removing things is now visible</strong>: clicking a cell or a connection selects it and shows a red &times; on it; a Remove button in the bottom bar and the Delete key do the same. A freshly drawn connection is selected straight away so its &times; is right there. Right-click and dragging a cell onto the bar still work.',
+            '<strong>Simpler styling</strong>: dropped the glow, gradients, glass panels and backdrop in favour of flat cells, a plain light bar, one thin ring per spike and solid panels on the shared theme. Connections are thicker and easier to click, the bar&rsquo;s rotate handles are larger, and the controls are listed in a collapsible card instead of a one-line hint.',
+        ]
+    },
+    {
         version: '0.15.0',
         date: '2026-11-04',
         title: 'Hubel & Wiesel — a receptive-field sandbox',
