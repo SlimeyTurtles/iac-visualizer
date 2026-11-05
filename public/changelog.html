@@ -116,6 +116,16 @@
 // { version, date, title, changes: [ ...strings, may contain <strong>/<code> ] }
 const CHANGELOG = [
     {
+        version: '0.15.0',
+        date: '2026-11-04',
+        title: 'Hubel & Wiesel — a receptive-field sandbox',
+        changes: [
+            '<strong>Hubel &amp; Wiesel</strong>: a new canvas page (<code>hubel_wiesel.html</code>) with a bar of light you can drag, rotate by its ends (or the scroll wheel) and resize, four photoreceptors that ping when the light is beneath them, and one neuron they converge on. Activation is shown <strong>only as firing frequency</strong>: a ping per spike, a pulse travelling down each connection, and a short spike train under every neuron — nothing is tinted or sized by activity. A fully lit photoreceptor fires at 10 Hz; a neuron is a perfect integrator that fires at the mean rate of its inputs, so it is busiest when the bar lines up with all of them.',
+            '<strong>Sandbox</strong>: drag photoreceptors and integrating neurons out of the dock, pull a wire from any node’s rim to a neuron (repeat to unplug), chain neurons into further layers, right-click or drag a node back onto the dock to remove it, and switch on sound to hear a pop per neuron spike, the way the original recordings were monitored.',
+            '<strong>Look</strong>: full-bleed glass-and-glow layout rather than the sidebar template, still on <code>theme.css</code> tokens. Spike timing is sub-stepped against wall-clock time so rates do not sag on slow frames. New “Vision” section in the nav and on the home page.',
+        ]
+    },
+    {
         version: '0.14.0',
         date: '2026-10-21',
         title: 'Brain Atlas — anatomy behind the planning models',

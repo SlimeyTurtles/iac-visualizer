@@ -126,5 +126,6 @@ app.listen(port, () => {
     console.log(`  - ART Pathfinding:         http://localhost:${port}/pathfind_art.html`);
     console.log(`  - MLP Pathfinding:         http://localhost:${port}/pathfind_mlp.html`);
     console.log(`  - MLP Pathfinding (Bulk):  http://localhost:${port}/pathfind_mlp_bulk.html`);
-    console.log(`  - Arithmetic Pathfinding:  http://localhost:${port}/pathfind_arith.html\n`);
+    console.log(`  - Arithmetic Pathfinding:  http://localhost:${port}/pathfind_arith.html`);
+    console.log(`  - Hubel & Wiesel sandbox:  http://localhost:${port}/hubel_wiesel.html\n`);
 });
